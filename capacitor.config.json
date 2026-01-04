@@ -1,0 +1,6 @@
+{
+  "appId": "com.crcvn.app",
+  "appName": "CRC VN",
+  "webDir": "www",
+  "bundledWebRuntime": false
+}

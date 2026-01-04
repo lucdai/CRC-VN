@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">CRC VN</string>
+    <string name="title_activity_main">CRC VN</string>
+    <string name="package_name">com.crcvn.app</string>
+    <string name="custom_url_scheme">com.crcvn.app</string>
+</resources>

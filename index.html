@@ -2,1417 +2,1959 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CRC VN - Điểm Danh Thông Minh</title>
-    <link rel="manifest" href="manifest.json">
-    <script src="js/tailwind.min.js"></script>
-    <script src="js/chart.min.js"></script>
-    <script src="js/chartjs-boxplot.min.js"></script>
-    <script src="js/html2canvas.min.js"></script>
-    <script>
-        // Hàm tạo chuỗi ngẫu nhiên 21 ký tự đa ngôn ngữ
-        function generateRandomFilename() {
-            const chars = 
-                '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ' + // Latin/Digits
-                'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя' + // Cyrillic (Nga)
-                'अआइईउऊऋएऐओऔकखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसह' + // Devanagari (Phạn Ngữ)
-                'IVXLCDM' + // Roman Numerals (La Mã)
-                'ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩαβγδεζηθικλμνξοπρστυφχψω' + // Greek (Hy Lạp)
-                '가나다라마바사아자차카타파하' + // Hangul (Hàn Quốc)
-                '你好世界人中大上下左右' + // Hanzi (Trung Quốc)
-                'あいうえおかきくけこサシスセソ' + // Japanese (Hiragana/Katakana)
-                'ÁÀẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬĐÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴáàảãạăằắẳẵặâầấẩẫậđèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵ' + // Vietnamese
-                '+−×÷=≠≈≤≥√∑∫∂∞π€$£%^&*()_+-=[]{};\':"\\|,./<>?!@#'; // Mathematical/Special Symbols
-            
-            let result = '';
-            for (let i = 0; i < 21; i++) {
-                result += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return result;
-        }
-    </script>
-    <script>
-        // --- State ---
-        let mode = 'raw', currentTab = 'data';
-        let datasets = [{ id: 1, name: "Mẫu A", dataStr: "45, 52, 60, 48, 55, 62, 49, 58, 65, 51" }];
-        let manualRows = [{ id: 1, lower: 40, upper: 50, freqs: {} }, { id: 2, lower: 50, upper: 60, freqs: {} }, { id: 3, lower: 60, upper: 70, freqs: {} }];
-        const colors = [
-            { bg: 'rgba(59, 130, 246, 0.5)', border: '#2563eb' }, { bg: 'rgba(239, 68, 68, 0.5)', border: '#dc2626' },
-            { bg: 'rgba(16, 185, 129, 0.5)', border: '#059669' }, { bg: 'rgba(245, 158, 11, 0.5)', border: '#d97706' },
-            { bg: 'rgba(139, 92, 246, 0.5)', border: '#7c3aed' }
-        ];
-        
-        // --- Tabs & Mode ---
-        function switchTab(t) {
-            currentTab = t;
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById(t==='data'?'tabDataBtn':'tabChartsBtn').classList.add('active');
-            document.getElementById('tabDataContent').classList.toggle('hidden', t!=='data');
-            document.getElementById('tabChartsContent').classList.toggle('hidden', t!=='charts');
-            if(t==='charts') calculate();
-        }
-        function switchInputMode(m) {
-            mode = m;
-            document.getElementById('btnRaw').className = mode==='raw' ? "flex-1 py-2 text-sm font-medium rounded bg-indigo-50 text-indigo-700" : "flex-1 py-2 text-sm font-medium rounded text-slate-500 hover:bg-slate-50";
-            document.getElementById('btnTable').className = mode==='table' ? "flex-1 py-2 text-sm font-medium rounded bg-indigo-50 text-indigo-700" : "flex-1 py-2 text-sm font-medium rounded text-slate-500 hover:bg-slate-50";
-            document.getElementById('rawSection').classList.toggle('hidden', mode!=='raw');
-            document.getElementById('tableSection').classList.toggle('hidden', mode!=='table');
-            calculate();
-        }
-
-        // --- Dataset Ops ---
-        function addDataset() {
-            const newId = (datasets.length>0 ? Math.max(...datasets.map(d=>d.id)):0)+1;
-            datasets.push({id:newId, name:`Mẫu ${String.fromCharCode(65+datasets.length)}`, dataStr:""});
-            renderInputs(); calculate();
-        }
-        function removeLastDataset() { if(datasets.length<=1)return; datasets.pop(); renderInputs(); calculate(); }
-        function updateRaw(id, val) { datasets.find(d=>d.id===id).dataStr=val; calculate(); }
-        function updateName(id, val) { datasets.find(d=>d.id===id).name=val; renderInputs(); calculate(); }
-        function renderInputs() {
-            document.getElementById('datasetContainer').innerHTML = datasets.map(ds=>`
-                <div class="bg-white border rounded p-2"><div class="flex justify-between mb-1">
-                <input value="${ds.name}" onchange="updateName(${ds.id}, this.value)" class="text-xs font-bold w-20 border-b outline-none focus:border-indigo-500"></div>
-                <textarea oninput="updateRaw(${ds.id}, this.value)" class="w-full h-12 text-[10px] font-mono border rounded p-1 resize-none">${ds.dataStr}</textarea></div>`).join('');
-            const h = document.getElementById('manualHeaderRow');
-            h.innerHTML = `<th class="p-2 w-12">Dưới</th><th class="p-2 w-12">Trên</th>` + datasets.map(d=>`<th class="p-2 text-center text-indigo-700">${d.name}</th>`).join('') + `<th class="w-6"></th>`;
-            renderManualBody();
-            updatePieSelect();
-        }
-        function updatePieSelect() {
-            const sel = document.getElementById('pieDatasetSelect');
-            sel.innerHTML = datasets.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
-        }
-
-        // --- Manual Table ---
-        function renderManualBody() {
-            document.getElementById('manualBody').innerHTML = manualRows.map(r=>`
-                <tr class="border-b hover:bg-slate-50"><td class="p-1"><input type="number" value="${r.lower}" onchange="updRow(${r.id},'lower',this.value)" class="w-full p-1 border rounded text-center input-cell"></td>
-                <td class="p-1"><input type="number" value="${r.upper}" onchange="updRow(${r.id},'upper',this.value)" class="w-full p-1 border rounded text-center input-cell"></td>
-                ${datasets.map(ds=>`<td class="p-1"><input type="number" value="${r.freqs[ds.id]||0}" min="0" onchange="updRow(${r.id},'freq_${ds.id}',this.value)" class="w-full p-1 border rounded text-center font-bold text-indigo-600 input-cell"></td>`).join('')}
-                <td class="p-1"><button onclick="delRow(${r.id})" class="text-red-300 hover:text-red-500">x</button></td></tr>`).join('');
-        }
-        function addManualRow() {
-            const last = manualRows[manualRows.length-1];
-            let l = last?last.upper:0, w = last?(last.upper-last.lower)||10:10;
-            manualRows.push({id:Date.now(), lower:l, upper:l+w, freqs:{}}); renderManualBody(); calculate();
-        }
-        function delRow(id) { if(manualRows.length>1) { manualRows=manualRows.filter(r=>r.id!==id); renderManualBody(); calculate(); } }
-        function updRow(id, f, val) {
-            const r = manualRows.find(x=>x.id===id); if(!r)return;
-            if(f.startsWith('freq')) r.freqs[parseInt(f.split('_')[1])] = parseInt(val)||0;
-            else { 
-                r[f]=parseFloat(val); 
-                if(manualRows.indexOf(r)===0 && (f==='lower'||f==='upper')) {
-                   const w = manualRows[0].upper - manualRows[0].lower;
-                   if(w>0) { for(let i=1;i<manualRows.length;i++){ manualRows[i].lower=manualRows[i-1].upper; manualRows[i].upper=manualRows[i].lower+w;} renderManualBody(); } 
-                }
-            }
-            calculate();
-        }
-
-        // --- Core Calc ---
-        let lastGroups = [], lastResults = [];
-
-        function calculate() {
-            let groups = [], results = [];
-            const resultsSection = document.getElementById('resultsSection');
-            const emptyState = document.getElementById('emptyState');
-            const chartsWrapper = document.getElementById('chartsWrapper');
-            const emptyChartsState = document.getElementById('emptyChartsState');
-
-            if(mode==='raw') {
-                const pDS = datasets.map(d => ({...d, data: d.dataStr.split(/[\s,;]+/).map(x=>parseFloat(x)).filter(n=>!isNaN(n)).sort((a,b)=>a-b)})).filter(d=>d.data.length>0);
-                if(pDS.length===0) { 
-                    resultsSection.classList.add('hidden'); emptyState.classList.remove('hidden'); 
-                    chartsWrapper.classList.add('hidden'); emptyChartsState.classList.remove('hidden');
-                    return;
-                }
-                const all = pDS.flatMap(d=>d.data), min=Math.min(...all), max=Math.max(...all);
-                const meth = document.getElementById('method').value, uStart=document.getElementById('startValue').value;
-                let start=uStart!==""?parseFloat(uStart):min, k=5, h=10;
-                
-                if(meth==='auto'){ k=Math.ceil(1+3.322*Math.log10(all.length)); h=Math.ceil((max-start)/k)||1; }
-                else if(meth==='manual_width'){ h=parseFloat(document.getElementById('manualH').value)||5; k=Math.ceil((max-start)/h); if(start+k*h<=max)k++;}
-                else { k=parseInt(document.getElementById('manualK').value)||5; h=(max-start)/k; }
-
-                for(let i=0;i<k;i++) groups.push({id:i+1, lower:start+i*h, upper:start+(i+1)*h, midpoint:start+i*h+h/2});
-                results = pDS.map((ds,i)=> processStats(ds.name, groups, colors[i%colors.length], ds.data, null));
-            } else {
-                groups = manualRows.map((r,i)=>({id:i+1, lower:r.lower, upper:r.upper, midpoint:(r.lower+r.upper)/2}));
-                results = datasets.map((ds,i)=> processStats(ds.name, groups, colors[i%colors.length], null, ds.id));
-            }
-            
-            const hasData = results.some(r => r.s.N > 0);
-            if(hasData) {
-                resultsSection.classList.remove('hidden'); emptyState.classList.add('hidden');
-                chartsWrapper.classList.remove('hidden'); emptyChartsState.classList.add('hidden');
-                lastGroups = groups; lastResults = results;
-                renderTables(groups, results);
-                if(currentTab==='charts') updateAllCharts(groups, results);
-            } else {
-                resultsSection.classList.add('hidden'); emptyState.classList.remove('hidden');
-                chartsWrapper.classList.add('hidden'); emptyChartsState.classList.remove('hidden');
-            }
-        }
-
-        function processStats(name, groups, color, rawData, dsId) {
-            let cf=0;
-            const gStats = groups.map((g, idx) => {
-                let freq = 0;
-                if(rawData) freq = (idx===groups.length-1) ? rawData.filter(x=>x>=g.lower && x<=g.upper+0.0001).length : rawData.filter(x=>x>=g.lower && x<g.upper).length;
-                else freq = manualRows[idx].freqs[dsId] || 0;
-                cf += freq;
-                return {...g, freq, cf};
-            });
-            const N = cf;
-            if(N===0) return {name, color, gStats, rawData: rawData||[], s:{N:0}};
-            
-            const mean = gStats.reduce((s,g)=>s+g.freq*g.midpoint,0)/N;
-            const variance = gStats.reduce((s,g)=>s+g.freq*Math.pow(g.midpoint-mean,2),0)/N;
-            const sd = Math.sqrt(variance);
-            const cv = mean!==0 ? (sd/Math.abs(mean))*100 : 0;
-            
-            let trueMean=null, absErr=null, relErr=null, outliers=[], range=0;
-            if(rawData) {
-                trueMean = rawData.reduce((a,b)=>a+b,0)/N; absErr = Math.abs(trueMean-mean); relErr = trueMean!==0 ? (absErr/Math.abs(trueMean))*100 : 0;
-                range = rawData[rawData.length-1] - rawData[0];
-            } else {
-                const ag = gStats.filter(g=>g.freq>0);
-                if(ag.length) range = ag[ag.length-1].upper - ag[0].lower;
-            }
-
-            const getQ = (t) => {
-                const g = gStats.find(x=>x.cf>=t);
-                if(!g) return {val:gStats[gStats.length-1].upper, grp:'>Max'};
-                const prev = gStats[g.id-2]?gStats[g.id-2].cf:0;
-                return {val: g.lower + ((t-prev)/g.freq)*(g.upper-g.lower), grp:`[${fmt(g.lower)};${fmt(g.upper)})`};
-            };
-            const q1 = getQ(N/4), q2=getQ(N/2), q3=getQ(3*N/4);
-            const iqr = q3.val - q1.val;
-
-            let maxF=-1, mG=null; gStats.forEach(g=>{if(g.freq>maxF){maxF=g.freq; mG=g;}});
-            let mode = 0;
-            if(mG) {
-                const i=gStats.indexOf(mG), p=(i>0?gStats[i-1].freq:0), n=(i<gStats.length-1?gStats[i+1].freq:0);
-                mode = mG.lower + ((mG.freq-p)/((mG.freq-p)+(mG.freq-n)))*(mG.upper-mG.lower);
-            }
-
-            if(rawData) {
-                const lf=q1.val-1.5*iqr, uf=q3.val+1.5*iqr;
-                outliers=rawData.filter(x=>x<lf||x>uf);
-            }
-
-            return { name, color, gStats, rawData: rawData || generateSimulatedData(gStats), s: {
-                N, mean, trueMean, absErr, relErr, variance, sd, cv, range,
-                q1:q1.val, q2:q2.val, q3:q3.val, iqr, mode, q1Loc:q1.grp, q2Loc:q2.grp, q3Loc:q3.grp,
-                outliers, disp: cv<10?"Thấp":cv<30?"TB":"Cao"
-            }};
-        }
-
-        function generateSimulatedData(gStats) {
-            let data = [];
-            gStats.forEach(g => {
-                for(let i=0; i<g.freq; i++) {
-                    const jitter = (Math.random() - 0.5) * (g.upper - g.lower) * 0.8;
-                    data.push(g.midpoint + jitter);
-                }
-            });
-            return data.sort((a,b)=>a-b);
-        }
-
-        function renderTables(groups, results) {
-            const m = [
-                {id:'N', l:'Tổng số (N)'}, {id:'trueMean', l:'Số đúng (x̄ gốc)', raw:1}, {id:'mean', l:'Số gần đúng (x̄ nhóm)'},
-                {id:'absErr', l:'Sai số tuyệt đối', raw:1}, {id:'relErr', l:'Sai số tương đối (%)', raw:1},
-                {id:'q2', l:'Trung vị (Me)'}, {id:'q1', l:'Q1'}, {id:'q3', l:'Q3'}, {id:'mode', l:'Mốt (Mo)'},
-                {id:'range', l:'Khoảng biến thiên (R)'}, {id:'iqr', l:'IQR'}, {id:'variance', l:'Phương sai (s²)'},
-                {id:'sd', l:'Độ lệch chuẩn (s)'}, {id:'cv', l:'CV (%)'}, {id:'disp', l:'Mức độ phân tán', txt:1},
-                {id:'outliers', l:'Ngoại lai (sl)', raw:1, len:1},
-                {id:'q1Loc', l:'Vị trí Q1', txt:1}, {id:'q2Loc', l:'Vị trí Me', txt:1}, {id:'q3Loc', l:'Vị trí Q3', txt:1}
-            ];
-            let h = `<thead><tr class="bg-indigo-50 border-b"><th class="px-4 py-2">Chỉ số</th>`+results.map(r=>`<th class="px-4 py-2 text-center" style="color:${r.color.border}">${r.name}</th>`).join('')+`</tr></thead><tbody>`;
-            m.forEach(x => {
-                h += `<tr class="border-b last:border-0 hover:bg-slate-50"><td class="px-4 py-2 font-medium text-slate-600">${x.l}</td>` + results.map(r=>{
-                    let v = r.s[x.id];
-                    if(x.raw && mode==='table') return `<td class="text-center text-slate-300 italic">N/A</td>`;
-                    if(v===undefined) return `<td>-</td>`;
-                    if(x.len) return `<td class="text-center font-bold text-red-600">${v.length}</td>`;
-                    if(x.txt) return `<td class="text-center text-slate-700">${v}</td>`;
-                    return `<td class="text-center font-bold text-slate-700">${fmt(v)}</td>`;
-                }).join('') + `</tr>`;
-            });
-            document.getElementById('statsTable').innerHTML = h+`</tbody>`;
-
-            let fh = `<thead><tr class="bg-indigo-50 border-b"><th class="px-4 py-2">Nhóm</th><th class="px-4 py-2 text-center">c_i</th>`+results.map(r=>`<th class="px-4 py-2 text-center" style="color:${r.color.border}">f (${r.name})</th>`).join('')+`</tr></thead><tbody>`;
-            groups.forEach((g,i)=>{
-                fh += `<tr class="border-b hover:bg-slate-50"><td class="px-4 py-2 text-slate-800">[${fmt(g.lower)}; ${fmt(g.upper)})</td><td class="px-4 py-2 text-center text-slate-500">${fmt(g.midpoint)}</td>`+results.map(r=>`<td class="px-4 py-2 text-center font-bold">${r.gStats[i].freq}</td>`).join('')+`</tr>`;
-            });
-            document.getElementById('freqTable').innerHTML = fh+`</tbody>`;
-        }
-
-        let charts = {};
-        function updateAllCharts(groups, results) {
-            const l = groups.map(g=>`[${fmt(g.lower)}; ${fmt(g.upper)})`);
-            const ol = [fmt(groups[0].lower), ...groups.map(g=>fmt(g.upper))]; 
-            const ds = (fn, type, fill) => results.map(r=>({
-                label: r.name, data: fn(r), backgroundColor: r.color.bg, borderColor: r.color.border, 
-                borderWidth: 1.5, tension: 0.3, fill: fill
-            }));
-
-            draw('chartHistogram', 'bar', l, ds(r=>r.gStats.map(g=>g.freq), 'bar', false), {scales:{x:{stacked:false},y:{beginAtZero:true}}});
-            draw('chartPolygon', 'line', groups.map(g=>fmt(g.midpoint)), ds(r=>r.gStats.map(g=>g.freq), 'line', false), {elements:{line:{tension:0}}});
-            draw('chartStacked', 'bar', l, ds(r=>r.gStats.map(g=>g.freq), 'bar', false), {scales:{x:{stacked:true},y:{stacked:true}}});
-            draw('chartRelFreq', 'bar', l, ds(r=>r.gStats.map(g=>(g.freq/r.s.N)*100), 'bar', false), {scales:{y:{beginAtZero:true, title:{display:true,text:'%'}}}});
-            draw('chartArea', 'line', l, ds(r=>r.gStats.map(g=>g.freq), 'line', true), {scales:{y:{stacked:true, beginAtZero:true}}, elements:{line:{tension:0.4}}});
-            draw('chartOgive', 'line', ol, ds(r=>[0, ...r.gStats.map(g=>g.cf)], 'line', false), {elements:{line:{tension:0.2}}});
-            updatePieChart();
-
-            const boxData = results.map(r => ({ label: r.name, backgroundColor: r.color.bg, borderColor: r.color.border, borderWidth: 1, outlierColor: '#ef4444', padding: 10, itemRadius: 0, data: [r.rawData] }));
-            draw('chartBox', 'boxplot', ['Phân bố'], boxData, {});
-
-            const violinData = results.map(r => ({ label: r.name, backgroundColor: r.color.bg, borderColor: r.color.border, borderWidth: 1, data: [r.rawData] }));
-            draw('chartViolin', 'violin', ['Mật độ'], violinData, {});
-
-            const scatterData = results.map(r => ({ label: r.name, backgroundColor: r.color.border, data: r.rawData.map((val, idx) => ({ x: val, y: Math.random() * 0.5 + results.indexOf(r) })) }));
-            draw('chartScatter', 'scatter', null, scatterData, { scales: { x: { type: 'linear', position: 'bottom', title: {display:true, text:'Giá trị'} }, y: { display: false } } });
-        }
-
-        function updatePieChart() {
-            const dsId = parseInt(document.getElementById('pieDatasetSelect').value) || (datasets[0]?datasets[0].id:0);
-            const dataset = datasets.find(d => d.id === dsId);
-            if(!dataset || !lastGroups.length) return;
-            let gStats = [];
-            if(mode==='raw') {
-                const data = dataset.dataStr.split(/[\s,;]+/).map(x=>parseFloat(x)).filter(n=>!isNaN(n));
-                gStats = lastGroups.map(g => ({...g, freq: data.filter(x=>x>=g.lower && x<g.upper).length}));
-            } else {
-                gStats = lastGroups.map((g,i) => ({...g, freq: manualRows[i].freqs[dsId]||0}));
-            }
-            const data = { labels: lastGroups.map(g => `[${fmt(g.lower)}; ${fmt(g.upper)})`), datasets: [{ data: gStats.map(g => g.freq), backgroundColor: ['#60a5fa','#f87171','#34d399','#fbbf24','#a78bfa','#f472b6','#9ca3af'] }] };
-            draw('chartPie', 'doughnut', data.labels, data.datasets, {});
-        }
-
-        function draw(id, type, l, d, opt) {
-            const ctx = document.getElementById(id).getContext('2d');
-            if(charts[id]) charts[id].destroy();
-            charts[id] = new Chart(ctx, {type, data:{labels:l, datasets:d}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, ...opt}});
-        }
-
-        // --- Download Functions ---
-        function downloadTableImage(tableId, baseName, format) {
-            const element = document.getElementById(tableId);
-            const randomId = generateRandomFilename();
-            const fileName = `${randomId}.${format}`;
-
-            html2canvas(element, { scale: 2, backgroundColor: '#ffffff' }).then(canvas => {
-                const link = document.createElement('a');
-                link.href = canvas.toDataURL(`image/${format}`);
-                link.download = fileName;
-                link.click();
-            });
-        }
-
-        function downloadChartImage(chartId, baseName, format) {
-            const chart = charts[chartId];
-            if (!chart) {
-                alert('Biểu đồ chưa được tạo. Vui lòng nhập dữ liệu.');
-                return;
-            }
-            
-            const randomId = generateRandomFilename();
-            const fileName = `${randomId}.${format}`;
-
-            const canvas = chart.canvas;
-            const link = document.createElement('a');
-            link.href = chart.toBase64Image(`image/${format}`); // Sử dụng hàm của Chart.js để lấy base64 image
-            link.download = fileName;
-            link.click();
-        }
-
-        function fmt(n) { const d=parseInt(document.getElementById('decimalPlaces').value)||2; return (n===undefined||n===null)?"-":new Intl.NumberFormat('vi-VN',{minimumFractionDigits:d,maximumFractionDigits:d}).format(n); }
-        function toggleInputs() { const m=document.getElementById('method').value; document.getElementById('inputH').classList.toggle('hidden', m!=='manual_width'); document.getElementById('inputK').classList.toggle('hidden', m!=='manual_count'); }
-        function copyTable() { 
-            const el = document.getElementById('freqTable'); let range, sel;
-            if (document.createRange && window.getSelection) { range = document.createRange(); sel = window.getSelection(); sel.removeAllRanges(); try { range.selectNodeContents(el); sel.addRange(range); } catch (e) { range.selectNode(el); sel.addRange(range); } document.execCommand("copy"); sel.removeAllRanges(); alert("Đã sao chép!"); }
-        }
-
-        // --- Sharing Feature ---
-        function shareLink() {
-            const state = {
-                m: mode,
-                ds: datasets.map(d => ({ n: d.name, s: d.dataStr })),
-                mr: manualRows.map(r => ({ l: r.lower, u: r.upper, f: r.freqs })),
-                dp: document.getElementById('decimalPlaces').value,
-                meth: document.getElementById('method').value,
-                h: document.getElementById('manualH').value,
-                k: document.getElementById('manualK').value,
-                sv: document.getElementById('startValue').value
-            };
-            const json = JSON.stringify(state);
-            const base64 = btoa(unescape(encodeURIComponent(json)));
-            const url = new URL(window.location.href);
-            url.searchParams.set('share', base64);
-            
-            navigator.clipboard.writeText(url.toString()).then(() => {
-                alert("Link chia sẻ đã được sao chép vào bộ nhớ tạm!");
-            }).catch(err => {
-                console.error('Could not copy text: ', err);
-                prompt("Sao chép link chia sẻ tại đây:", url.toString());
-            });
-        }
-
-        function loadSharedData() {
-            const params = new URLSearchParams(window.location.search);
-            const sharedData = params.get('share');
-            if (!sharedData) return;
-
-            try {
-                const json = decodeURIComponent(escape(atob(sharedData)));
-                const state = JSON.parse(json);
-                
-                if (state.m) mode = state.m;
-                if (state.ds) datasets = state.ds.map((d, i) => ({ id: i + 1, name: d.n, dataStr: d.s }));
-                if (state.mr) manualRows = state.mr.map((r, i) => ({ id: Date.now() + i, lower: r.l, upper: r.u, freqs: r.f }));
-                
-                if (state.dp) document.getElementById('decimalPlaces').value = state.dp;
-                if (state.meth) document.getElementById('method').value = state.meth;
-                if (state.h) document.getElementById('manualH').value = state.h;
-                if (state.k) document.getElementById('manualK').value = state.k;
-                if (state.sv) document.getElementById('startValue').value = state.sv;
-
-                toggleInputs();
-                if (mode === 'table') {
-                    document.getElementById('btnRaw').className = "flex-1 py-2 text-sm font-medium rounded text-slate-500 hover:bg-slate-50";
-                    document.getElementById('btnTable').className = "flex-1 py-2 text-sm font-medium rounded bg-indigo-50 text-indigo-700";
-                    document.getElementById('rawSection').classList.add('hidden');
-                    document.getElementById('tableSection').classList.remove('hidden');
-                }
-            } catch (e) {
-                console.error("Error loading shared data:", e);
-            }
-        }
-
-        // --- Home Navigation ---
-        function goHome() {
-            // Chuyển về tab "Dữ liệu & Thống kê"
-            switchTab('data');
-            // Cuộn lên đầu trang
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-
-        window.onload = () => { 
-            loadSharedData();
-            renderInputs(); 
-            calculate(); 
-        };
-        // Hàm tạo chuỗi ngẫu nhiên 21 ký tự đa ngôn ngữ
-        function generateRandomFilename() {
-            const chars = 
-                '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ' + // Latin/Digits
-                'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя' + // Cyrillic (Nga)
-                'अआइईउऊऋएऐओऔकखगघङचछजझञटठडढणतथदधनपফबभमयरलवशषसह' + // Devanagari (Phạn Ngữ)
-                'IVXLCDM' + // Roman Numerals (La Mã)
-                'ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩαβγδεζηθικλμνξοπρστυΦχψω' + // Greek (Hy Lạp)
-                '가나다라마바사아자차카타파하' + // Hangul (Hàn Quốc)
-                '你好世界人中大上下左右' + // Hanzi (Trung Quốc)
-                'あいうえおかきくけこサシスセソ' + // Japanese (Hiragana/Katakana)
-                'ÁÀẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬĐÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴáàảãạăằắẳẵặâầấẩẫậđèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵ' + // Vietnamese
-                '+−×÷=≠≈≤≥√∑∫∂∞π€$£%^&*()_+-=[]{};\':"\\|,./<>?!@#'; // Mathematical/Special Symbols
-            
-            let result = '';
-            for (let i = 0; i < 21; i++) {
-                result += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return result;
-        }
-    </script>
-    <link rel="stylesheet" href="css/fonts.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Attendance App UI Demo v50 (Gemini AI)</title>
+    <!-- Tải Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- SortableJS library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    
     <style>
-        body { font-family: 'Inter', sans-serif; }
-        ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-track { background: #f1f5f9; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
-        .input-cell:focus { outline: 2px solid #6366f1; background: white; }
-        .tab-btn.active { border-bottom: 2px solid #4f46e5; color: #4f46e5; font-weight: 600; }
-        .tab-btn { color: #64748b; font-weight: 500; }
-        .logo-container {
-            transition: transform 0.3s ease, box-shadow 0.3s ease;
+        :root {
+            --color-background: #FFFFFF;
+            --color-text: #111827;
+            --color-secondary: #6B7280;
+            --color-card: #F3F4F6;
+            --color-border: #E5E7EB;
+            --color-present-bg: #111827;
+            --color-present-text: #FFFFFF; 
         }
-        .logo-container:hover {
-            transform: scale(1.05);
-            filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.15));
+
+        /* --- CẤU HÌNH CƠ BẢN --- */
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body, h1, h2, h3, h4, h5, h6, p, span, div, a, button, input, textarea, select {
+            color: var(--color-text);
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+
+        .text-3xl, .text-2xl, .text-xl, .text-lg, .font-bold, .font-semibold {
+            color: var(--color-text) !important;
+        }
+
+        .text-white { color: #ffffff !important; }
+        .text-green-600 { color: #16a34a !important; }
+        .text-red-600 { color: #dc2626 !important; }
+        .text-red-500 { color: #ef4444 !important; }
+        
+        .text-secondary, [style*="var(--color-secondary)"] {
+            color: var(--color-secondary) !important;
+        }
+        
+        .btn-theme-primary {
+            background-color: var(--color-text) !important;
+            color: var(--color-background) !important;
+        }
+        .btn-theme-primary svg, .btn-theme-primary span {
+            color: var(--color-background) !important;
+            fill: currentColor;
+        }
+        
+        /* Button gradient cho AI */
+        .btn-ai {
+            background: linear-gradient(135deg, #6366f1 0%, #a855f7 100%) !important;
+            color: white !important;
+            border: none !important;
+        }
+        .btn-ai svg, .btn-ai span {
+            color: white !important;
+        }
+
+        /* --- LAYOUT --- */
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--color-background);
+            overscroll-behavior: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            width: 100%; height: 100%;
+            overflow: hidden;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #app-shell {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+            max-width: 450px;
+            margin: 0 auto;
+            border-left: 1px solid var(--color-border);
+            border-right: 1px solid var(--color-border);
+            background-color: var(--color-background);
+            overflow: hidden;
+            position: relative;
+        }
+
+        #main-content {
+            flex: 1;
+            position: relative;
+            width: 100%;
+            overflow-x: hidden;
+            overflow-y: hidden;
+            touch-action: pan-y;
+        }
+        
+        /* --- PAGE TRANSITION --- */
+        .page-content {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 1rem;
+            background-color: var(--color-background);
+            transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94), opacity 0.3s ease;
+            opacity: 0;
+            pointer-events: none;
+            transform: translateX(100%);
+            z-index: 0;
+            display: block !important;
+            visibility: hidden;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+        }
+        
+        .page-content::-webkit-scrollbar { display: none; }
+
+        .page-content.active {
+            opacity: 1;
+            pointer-events: auto;
+            transform: translateX(0);
+            z-index: 10;
+            visibility: visible;
+        }
+        
+        .page-enter-right { transform: translateX(100%); }
+        .page-exit-left { transform: translateX(-20%); opacity: 0.8; }
+        .page-enter-left { transform: translateX(-100%); }
+        .page-exit-right { transform: translateX(100%); z-index: 20; }
+
+        #empty-list-text { display: none; }
+        #empty-list-text.visible { display: block; }
+
+        /* Tab items */
+        .tab-item { color: var(--color-secondary); }
+        .tab-item.active { color: var(--color-text); }
+        .tab-item svg { color: currentColor; }
+        
+        /* FAB */
+        .fab { 
+            background-color: var(--color-text); 
+            position: fixed; 
+            z-index: 100;
+            transition: transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            touch-action: none;
+        }
+        .fab.dragging {
+            transition: none;
+            cursor: grabbing;
+            transform: scale(1.1);
+        }
+        .fab.position-locked {
+            animation: shake 0.5s;
+            box-shadow: 0 0 15px rgba(0,0,0,0.3);
+        }
+        .fab svg { color: var(--color-background); }
+
+        @keyframes shake {
+            0% { transform: translate(1px, 1px) rotate(0deg); }
+            10% { transform: translate(-1px, -2px) rotate(-1deg); }
+            20% { transform: translate(-3px, 0px) rotate(1deg); }
+            30% { transform: translate(3px, 2px) rotate(0deg); }
+            40% { transform: translate(1px, -1px) rotate(1deg); }
+            50% { transform: translate(-1px, 2px) rotate(-1deg); }
+            60% { transform: translate(-3px, 1px) rotate(0deg); }
+            70% { transform: translate(3px, 1px) rotate(-1deg); }
+            80% { transform: translate(-1px, -1px) rotate(1deg); }
+            90% { transform: translate(1px, 2px) rotate(0deg); }
+            100% { transform: translate(1px, -2px) rotate(-1deg); }
+        }
+        
+        /* Input & Card */
+        .input {
+            background-color: var(--color-card);
+            color: var(--color-text);
+            border: 1px solid var(--color-border);
+            width: 100%;
+        }
+        .input::placeholder { color: var(--color-secondary); }
+        .card { background-color: var(--color-card); width: 100%; }
+        
+        /* Modal */
+        .modal-backdrop {
+            background-color: rgba(0,0,0,0.5);
+            transition: opacity 0.3s ease;
+            z-index: 1000;
+        }
+        .modal-content {
+            background-color: var(--color-background);
+            transition: all 0.3s ease;
+            transform: scale(0.95);
+            border: 1px solid var(--color-border);
+            width: 90%;
+            max-width: 350px;
+        }
+        .modal-visible .modal-backdrop { opacity: 1; }
+        .modal-visible .modal-content { opacity: 1; transform: scale(1); }
+        
+        /* List */
+        #results-list {
+            list-style: none;
+            padding: 0;
+            margin: 1rem 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        #results-list li {
+            background-color: var(--color-card);
+            color: var(--color-text);
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.375rem;
+            margin-bottom: 0.5rem;
+            font-weight: 500;
+            border: 1px solid var(--color-border);
+        }
+        #results-list li.all-present {
+            background-color: #F0FDF4;
+            color: #166534;
+            border: 1px solid #BBF7D0;
+        }
+        
+        /* Grid */
+        #dynamic-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 8px;
+            padding: 4px;
+            width: 100%;
+        }
+        .grid-cell {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2px;
+            text-align: center;
+            font-size: 12px;
+            font-weight: 500;
+            overflow: hidden;
+            word-break: break-word;
+            border-radius: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .grid-cell:hover {
+            transform: translateY(-4px) scale(1.05);
+            z-index: 10;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.12);
+        }
+        .grid-cell:active { transform: translateY(-1px) scale(0.98); }
+        
+        .grid-cell-absent {
+            background-color: var(--color-card);
+            color: var(--color-text);
+            border: 2px solid var(--color-text); 
+        }
+
+        .grid-cell-present {
+            background-color: var(--color-present-bg);
+            color: var(--color-present-text);
+            font-weight: 700;
+            border: 2px solid var(--color-present-bg);
+            transform: scale(1.03);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+        .grid-cell-present:hover { transform: translateY(-4px) scale(1.08); }
+        .grid-cell-empty {
+            background-color: transparent;
+            border: 2px dashed var(--color-border);
+            box-shadow: none;
+            cursor: default;
+        }
+        .grid-cell-empty:hover { transform: none; box-shadow: none; }
+        
+        /* Color Picker */
+        .color-picker-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+            margin-bottom: 0.5rem;
+        }
+        .color-picker-preview {
+            width: 2.25rem;
+            height: 2.25rem;
+            border-radius: 9999px;
+            border: 1px solid var(--color-border);
+            transition: background-color 0.2s;
+        }
+        .color-toggle-group {
+            display: flex;
+            background-color: var(--color-border);
+            border-radius: 0.5rem;
+            padding: 0.25rem;
+        }
+        .color-toggle-btn {
+            font-size: 0.75rem;
+            font-weight: 500;
+            padding: 0.25rem 0.5rem;
+            border-radius: 0.375rem;
+            background-color: transparent;
+            color: var(--color-secondary);
+            border: none;
+            cursor: pointer;
+        }
+        .color-toggle-btn.active {
+            background-color: var(--color-background);
+            color: var(--color-text);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .color-palette-container {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        .color-swatch {
+            width: 100%;
+            aspect-ratio: 1 / 1;
+            border-radius: 9999px;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+        }
+        .color-swatch:hover { transform: scale(1.1); }
+        .color-swatch.active {
+            border-color: var(--color-text);
+            box-shadow: 0 0 0 2px var(--color-text);
+        }
+        .color-hex-container { margin-top: 0.5rem; }
+        #profile-avatar-img { object-fit: cover; }
+
+        /* Attendance Log */
+        .attendance-log-modal-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            background-color: var(--color-card);
+            border-radius: 8px;
+            border-left: 4px solid var(--color-present-bg);
+            width: 100%;
+        }
+        .attendance-log-name {
+            font-weight: 500;
+            font-size: 14px;
+            color: var(--color-text);
+        }
+        .attendance-log-time {
+            font-size: 12px;
+            color: var(--color-secondary);
+            font-family: monospace;
+            background-color: var(--color-background); 
+            padding: 4px 8px;
+            border-radius: 4px;
+            border: 1px solid var(--color-border);
+        }
+        .attendance-log-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        
+        /* SortableJS */
+        .sortable-ghost {
+            opacity: 0.4;
+            background-color: var(--color-secondary);
+        }
+        .sortable-drag {
+            cursor: grabbing;
+            opacity: 0.9;
+            background-color: var(--color-card);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+            transform: scale(1.02);
+            border: 1px solid var(--color-text);
+        }
+        
+        .drag-handle {
+            cursor: grab;
+            padding: 10px;
+            touch-action: none;
+            color: var(--color-secondary);
+            display: none; 
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .edit-mode .drag-handle {
+            display: flex;
+            color: var(--color-text);
+        }
+        
+        .edit-mode .action-btn {
+            display: none;
+        }
+        
+        .drag-handle:active {
+            cursor: grabbing;
+            color: var(--color-present-bg);
+        }
+        
+        /* Canvas */
+        #gesture-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 9999;
+        }
+
+        /* AI Modal specific */
+        .ai-loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            color: var(--color-secondary);
+        }
+        .ai-result-content {
+            white-space: pre-wrap;
+            line-height: 1.6;
+            font-size: 0.95rem;
         }
     </style>
 </head>
-<body class="bg-slate-50 text-slate-800 min-h-screen p-4 md:p-6">
+<body class="overflow-hidden">
 
-    <div class="max-w-7xl mx-auto space-y-4">
-        
-        <!-- HEADER -->
-        <header class="bg-white p-5 rounded-xl shadow-sm border border-slate-200 flex flex-col md:flex-row justify-between items-center gap-4">
-            <div class="flex items-center gap-3 cursor-pointer logo-container" onclick="goHome()">
-                <img src="assets/logo.png" alt="CRC VN Logo" class="h-12 w-auto">
-                <h1 class="text-xl font-bold text-slate-900">CRC VN - Điểm Danh Thông Minh</h1>
-            </div>
-            
-            <div class="flex items-center gap-3">
-                <div class="flex items-center gap-2 mr-2">
-                    <span class="text-sm font-medium text-slate-600">Làm tròn:</span>
-                    <input type="number" id="decimalPlaces" value="2" min="0" max="10" class="w-16 p-1.5 text-center border border-slate-300 rounded focus:ring-2 focus:ring-indigo-500 font-mono text-sm" onchange="calculate()">
-                </div>
-                <button onclick="shareLink()" class="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg shadow-sm font-medium transition text-sm">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 100-2.684 3 3 0 000 2.684zm0 9a3 3 0 100-2.684 3 3 0 000 2.684z"></path></svg>
-                    Chia sẻ
-                </button>
-            </div>
-        </header>
+    <canvas id="gesture-canvas"></canvas>
 
-        <!-- TAB NAVIGATION -->
-        <nav class="flex border-b border-slate-200 bg-white rounded-t-xl px-6 shadow-sm overflow-x-auto">
-            <button onclick="switchTab('data')" id="tabDataBtn" class="tab-btn active px-6 py-4 transition-colors whitespace-nowrap">
-                Dữ liệu & Thống kê
-            </button>
-            <button onclick="switchTab('charts')" id="tabChartsBtn" class="tab-btn px-6 py-4 transition-colors flex items-center gap-2 whitespace-nowrap">
-                Kho Biểu đồ
-                <span class="bg-indigo-100 text-indigo-700 text-xs px-2 py-0.5 rounded-full">12 loại</span>
-            </button>
-        </nav>
-
-        <!-- ================= TAB 1: DATA & STATS ================= -->
-        <div id="tabDataContent" class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            
-            <!-- LEFT COLUMN: INPUTS -->
-            <div class="lg:col-span-4 space-y-4">
-                <div class="bg-white p-3 rounded-xl shadow-sm border border-slate-200 flex gap-2">
-                    <button onclick="switchInputMode('raw')" id="btnRaw" class="flex-1 py-2 text-sm font-medium rounded bg-indigo-50 text-indigo-700">Dữ liệu thô</button>
-                    <button onclick="switchInputMode('table')" id="btnTable" class="flex-1 py-2 text-sm font-medium rounded text-slate-500 hover:bg-slate-50">Bảng tần số</button>
-                </div>
-
-                <div class="flex gap-2">
-                    <button onclick="addDataset()" class="flex-1 text-xs bg-indigo-600 hover:bg-indigo-700 text-white py-2 rounded shadow-sm font-medium transition">+ Thêm Mẫu</button>
-                    <button onclick="removeLastDataset()" class="flex-1 text-xs bg-white border border-slate-300 text-slate-600 hover:text-red-600 py-2 rounded shadow-sm font-medium transition">Xóa Mẫu</button>
-                </div>
-
-                <!-- RAW INPUT -->
-                <div id="rawSection" class="space-y-3">
-                    <div id="datasetContainer" class="space-y-3 max-h-[400px] overflow-y-auto pr-1"></div>
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 p-4">
-                        <div class="font-bold text-slate-700 mb-3 text-xs uppercase">Cấu hình ghép nhóm</div>
-                        <div class="space-y-3">
-                            <select id="method" onchange="toggleInputs(); calculate()" class="w-full p-2 border border-slate-300 rounded text-sm bg-white"><option value="auto">Tự động</option><option value="manual_width">Cố định độ rộng (h)</option><option value="manual_count">Cố định số nhóm (k)</option></select>
-                            <div id="inputH" class="hidden"><input type="number" id="manualH" value="5" min="0.1" step="0.1" class="w-full p-2 border border-slate-300 rounded text-sm" placeholder="Độ rộng (h)" onchange="calculate()"></div>
-                            <div id="inputK" class="hidden"><input type="number" id="manualK" value="6" min="1" max="50" class="w-full p-2 border border-slate-300 rounded text-sm" placeholder="Số nhóm (k)" onchange="calculate()"></div>
-                            <input type="number" id="startValue" placeholder="Giá trị bắt đầu" class="w-full p-2 border border-slate-300 rounded text-sm" onchange="calculate()">
-                        </div>
-                    </div>
-                </div>
-
-                <!-- TABLE INPUT -->
-                <div id="tableSection" class="hidden bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                    <div class="p-3 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-                        <h3 class="font-bold text-sm text-slate-700">Nhập Bảng</h3>
-                        <button onclick="addManualRow()" class="text-xs bg-white border px-2 py-1 rounded hover:bg-indigo-50 text-indigo-700">+ Nhóm</button>
-                    </div>
-                    <div class="p-2 overflow-x-auto"><table class="w-full text-xs" id="manualInputTable"><thead><tr id="manualHeaderRow"></tr></thead><tbody id="manualBody"></tbody></table></div>
-                </div>
-            </div>
-
-            <!-- RIGHT COLUMN: TABLES -->
-            <div class="lg:col-span-8">
-                <!-- Wrapper for Results -->
-                <div id="resultsSection" class="hidden space-y-6">
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                        <div class="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-                            <h2 class="font-bold text-slate-800 text-sm uppercase">Bảng Phân Bố Tần Số</h2>
-                            <div class="flex gap-2">
-                                <button onclick="copyTable()" class="text-xs border bg-white px-3 py-1 rounded hover:text-indigo-600">Copy</button>
-                                <button onclick="downloadTableImage('freqTable', 'Bảng_Phân_Bố_Tần_Số', 'png')" class="text-xs border bg-white px-3 py-1 rounded hover:text-green-600 flex items-center gap-1">
-                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                                    PNG
-                                </button>
-                                <button onclick="downloadTableImage('freqTable', 'Bảng_Phân_Bố_Tần_Số', 'jpeg')" class="text-xs border bg-white px-3 py-1 rounded hover:text-blue-600 flex items-center gap-1">
-                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                                    JPEG
-                                </button>
-                            </div>
-                        </div>
-                        <div class="overflow-x-auto"><table class="w-full text-sm text-left" id="freqTable"></table></div>
-                    </div>
-                    <div class="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
-                        <div class="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
-                            <h2 class="font-bold text-slate-800 text-sm uppercase">Bảng Các Chỉ Số Thống Kê</h2>
-                            <div class="flex gap-2">
-                                <button onclick="downloadTableImage('statsTable', 'Bảng_Các_Chỉ_Số_Thống_Kê', 'png')" class="text-xs border bg-white px-3 py-1 rounded hover:text-green-600 flex items-center gap-1">
-                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                                    PNG
-                                </button>
-                                <button onclick="downloadTableImage('statsTable', 'Bảng_Các_Chỉ_Số_Thống_Kê', 'jpeg')" class="text-xs border bg-white px-3 py-1 rounded hover:text-blue-600 flex items-center gap-1">
-                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
-                                    JPEG
-                                </button>
-                            </div>
-                        </div>
-                        <div class="overflow-x-auto"><table class="w-full text-sm text-left" id="statsTable"></table></div>
-                    </div>
+    <!-- SVG Icons -->
+    <svg width="0" height="0" class="absolute">
+        <defs>
+            <symbol id="icon-home" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></symbol>
+            <symbol id="icon-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></symbol>
+            <symbol id="icon-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></symbol>
+            <symbol id="icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></symbol>
+            <symbol id="icon-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></symbol>
+            <symbol id="icon-edit" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></symbol>
+            <symbol id="icon-chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></symbol>
+            <symbol id="icon-save" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></symbol>
+            <symbol id="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></symbol>
+            <symbol id="icon-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></symbol>
+            <symbol id="icon-image" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></symbol>
+            <symbol id="icon-bookmark" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"></path></symbol>
+            <symbol id="icon-palette" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5"></circle><circle cx="17.5" cy="10.5" r=".5"></circle><circle cx="8.5" cy="7.5" r=".5"></circle><circle cx="6.5" cy="12.5" r=".5"></circle><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.668 0-.437-.18-.835-.437-1.139-.257-.303-.437-.69-.437-1.121s.18-.818.437-1.121c.257-.303.437-.69.437-1.121s-.18-.818-.437-1.121c.257-.303.437-.69.437-1.121s.18-.818.437-1.121c.257-.303.437-.69.437-1.121C13.648 2.746 12.926 2 12 2z"></path></symbol>
+            <symbol id="icon-languages" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 8 6 6"></path><path d="m4 14 6-6 2-3"></path><path d="M2 5h12"></path><path d="M7 2h1"></path><path d="m22 22-5-10-5 10"></path><path d="M14 18h6"></path></symbol>
+            <symbol id="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></symbol>
+            <symbol id="icon-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></symbol>
+            <symbol id="icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></symbol>
+            <symbol id="icon-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></symbol>
+            <symbol id="icon-grip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"></line><line x1="3" y1="6" x2="21" y2="6"></line><line x1="3" y1="18" x2="21" y2="18"></line></symbol>
+            <symbol id="icon-sort" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 4-4 4 4"></path><path d="M7 5v14"></path><path d="m21 15-4 4-4-4"></path><path d="M17 19V5"></path></symbol>
+            <!-- MỚI: Icon Sparkles cho AI -->
+            <symbol id="icon-sparkles" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z"></path></symbol>
+        </defs>
+    </svg>
+    
+    <!-- App Shell -->
+    <div id="app-shell">
+        <!-- Main Content -->
+        <main id="main-content">
+            <!-- Page 1: Home -->
+            <div id="page-home" class="page-content p-4 active">
+                <div class="flex justify-between items-center mb-6">
+                    <h1 class="text-3xl font-bold" data-t="myLists">Danh sách của tôi</h1>
+                    <!-- Nút chuyển chế độ sắp xếp -->
+                    <button id="toggle-sort-btn" class="p-2 rounded-full" style="background-color: var(--color-card); color: var(--color-text);">
+                         <svg class="w-6 h-6"><use xlink:href="#icon-sort"></use></svg>
+                    </button>
                 </div>
                 
-                <!-- Empty State Data -->
-                <div id="emptyState" class="hidden h-96 flex flex-col items-center justify-center text-slate-400 bg-slate-50 border-2 border-dashed border-slate-200 rounded-xl">
-                    <svg class="w-12 h-12 mb-2 opacity-50" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
-                    <p class="text-sm">Vui lòng nhập dữ liệu để xem kết quả</p>
+                <div class="relative mb-4">
+                    <input type="text" id="search-input" class="input w-full p-3 pl-10 text-base rounded-lg" data-t-placeholder="searchPlaceholder" placeholder="Tìm kiếm danh sách...">
+                    <svg class="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2" style="color: var(--color-secondary)"><use xlink:href="#icon-search"></use></svg>
+                </div>
+                
+                <div id="lists-container" class="space-y-3">
+                    <p id="empty-list-text" class="text-center text-lg mt-10 hidden" data-t="emptyList">Chưa có danh sách nào...</p>
                 </div>
             </div>
-        </div>
 
-        <!-- ================= TAB 2: VISUALIZATION ================= -->
-        <div id="tabChartsContent" class="hidden">
-            
-            <!-- Charts Wrapper -->
-            <div id="chartsWrapper" class="hidden space-y-6">
-                <h3 class="text-lg font-bold text-slate-800 border-b pb-2">1. Phân Phối & So Sánh Cơ Bản</h3>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-                        <div class="flex justify-between items-center mb-4">
-                            <h3 class="font-bold text-slate-700 text-center flex-1">Grouped Bar Chart (Cột Nhóm)</h3>
-                            <div class="flex gap-1">
-                                <button onclick="downloadChartImage('chartHistogram', 'Grouped_Bar_Chart', 'png')" class="text-xs border bg-white px-2 py-1 rounded hover:text-green-600">PNG</button>
-                                <button onclick="downloadChartImage('chartHistogram', 'Grouped_Bar_Chart', 'jpeg')" class="text-xs border bg-white px-2 py-1 rounded hover:text-blue-600">JPEG</button>
-                            </div>
+            <!-- Page 2: Profile -->
+            <div id="page-profile" class="page-content p-4">
+                <h1 class="text-3xl font-bold mb-6" data-t="profile">Hồ sơ</h1>
+                <div class="flex flex-col items-center mb-6">
+                    <img id="profile-avatar-img" src="https://placehold.co/100x100/E2E8F0/4A5568?text=User" class="w-28 h-28 rounded-full mb-3 border-2" alt="Avatar">
+                    <input type="file" id="avatar-upload-input" class="hidden" accept="image/*">
+                    <label for="avatar-upload-input" class="flex items-center space-x-2 text-sm font-medium px-3 py-2 rounded-lg card cursor-pointer" style="color: var(--color-text)">
+                        <svg class="w-4 h-4"><use xlink:href="#icon-image"></use></svg>
+                        <span data-t="changeAvatar">Thay đổi Avatar</span>
+                    </label>
+                </div>
+                <label for="profile-name" class="text-base font-medium mb-1" data-t="displayName">Tên hiển thị</label>
+                <input type="text" id="profile-name" class="input w-full p-3 text-base rounded-lg mb-4" data-t-placeholder="displayNamePlaceholder" placeholder="Nhập tên của bạn">
+                <label for="profile-notes" class="text-base font-medium mb-1" data-t="notes">Ghi chú</label>
+                <textarea id="profile-notes" class="input w-full p-3 text-base rounded-lg h-24" data-t-placeholder="notesPlaceholder" placeholder="Ghi chú cá nhân..."></textarea>
+                <div class="h-px bg-gray-200 my-6"></div>
+                <h2 class="text-2xl font-bold mb-4" data-t="myListDirectory">Mục lục danh sách</h2>
+                <div id="profile-lists-directory" class="space-y-2"></div>
+            </div>
+
+            <!-- Page 3: Settings -->
+            <div id="page-settings" class="page-content p-4">
+                <h1 class="text-3xl font-bold mb-6" data-t="settings">Cài đặt</h1>
+                
+                <h2 class="text-xl font-semibold mb-3" data-t="language">Ngôn ngữ</h2>
+                
+                <div class="flex items-start space-x-4 p-3 card rounded-lg mb-6 relative" style="z-index: 50;">
+                    <svg class="w-6 h-6 flex-shrink-0 mt-2" style="color: var(--color-text)"><use xlink:href="#icon-languages"></use></svg>
+                    <!-- Container dropdown -->
+                    <div id="language-picker" class="w-full"></div>
+                </div>
+
+                <h2 class="text-xl font-semibold mb-3" data-t="theme">Giao diện</h2>
+                <div class="p-3 card rounded-lg space-y-4">
+                    <svg class="w-6 h-6 mb-2" style="color: var(--color-text)"><use xlink:href="#icon-palette"></use></svg>
+                    
+                    <div id="theme-bg-picker">
+                        <div class="color-picker-header">
+                            <span class="font-medium" data-t="backgroundColor">Màu nền</span>
+                            <div id="bg-color-preview" class="color-picker-preview"></div>
                         </div>
-                        <div class="h-64 relative w-full"><canvas id="chartHistogram"></canvas></div>
+                        <div class="color-toggle-group">
+                            <button class="color-toggle-btn active" data-type="bg" data-mode="palette" data-t="palette">Palette</button>
+                            <button class="color-toggle-btn" data-type="bg" data-mode="hex" data-t="hex">Hex</button>
+                        </div>
+                        <div id="bg-palette-container" class="color-palette-container"></div>
+                        <div id="bg-hex-container" class="color-hex-container">
+                            <input type="text" id="bg-hex-input" class="input w-full p-2 text-sm rounded-lg" data-t-placeholder="hexBgPlaceholder" placeholder="#FFFFFF">
+                        </div>
                     </div>
-                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-                        <div class="flex justify-between items-center mb-4">
-                            <h3 class="font-bold text-slate-700 text-center flex-1">Line Chart (Đường/Polygon)</h3>
-                            <div class="flex gap-1">
-                                <button onclick="downloadChartImage('chartPolygon', 'Line_Chart', 'png')" class="text-xs border bg-white px-2 py-1 rounded hover:text-green-600">PNG</button>
-                                <button onclick="downloadChartImage('chartPolygon', 'Line_Chart', 'jpeg')" class="text-xs border bg-white px-2 py-1 rounded hover:text-blue-600">JPEG</button>
-                            </div>
+                    
+                    <div id="theme-text-picker" class="pt-4 border-t" style="border-color: var(--color-border);">
+                         <div class="color-picker-header">
+                            <span class="font-medium" data-t="textColor">Màu chữ</span>
+                            <div id="text-color-preview" class="color-picker-preview"></div>
                         </div>
-                        <div class="h-64 relative w-full"><canvas id="chartPolygon"></canvas></div>
-                    </div>
-                    <div class="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-                        <div class="flex justify-between items-center mb-4">
-                            <h3 class="font-bold text-slate-700 text-center flex-1">Stacked Column (Cột Chồng)</h3>
-                            <div class="flex gap-1">
-                                <button onclick="downloadChartImage('chartStacked', 'Stacked_Column', 'png')" class="text-xs border bg-white px-2 py-1 rounded hover:text-green-600">PNG</button>
-                                <button onclick="downloadChartImage('chartStacked', 'Stacked_Column', 'jpeg')" class="text-xs border bg-white px-2 py-1 rounded hover:text-blue-600">JPEG</button>
-                            </div>
+                        <div class="color-toggle-group">
+                            <button class="color-toggle-btn active" data-type="text" data-mode="palette" data-t="palette">Palette</button>
+                            <button class="color-toggle-btn" data-type="text" data-mode="hex" data-t="hex">Hex</button>
                         </div>
-                        <div class="h-64 relative w-full"><canvas id="chartStacked"></canvas></div>
+                        <div id="text-palette-container" class="color-palette-container"></div>
+                        <div id="text-hex-container" class="color-hex-container">
+                            <input type="text" id="text-hex-input" class="input w-full p-2 text-sm rounded-lg" data-t-placeholder="hexTextPlaceholder" placeholder="#111827">
+                        </div>
                     </div>
                 </div>
+            </div>
+            
+            <!-- Page 4: Form -->
+            <div id="page-form" class="page-content p-4">
+                 <div class="flex items-center mb-6">
+                    <button id="form-back-btn" class="p-2">
+                        <svg class="w-6 h-6"><use xlink:href="#icon-chevron-left"></use></svg>
+                    </button>
+                    <h1 id="form-title" class="text-3xl font-bold ml-2" data-t="createList">Tạo danh sách</h1>
+                </div>
+                <p id="form-error" class="text-red-500 text-center mb-3 hidden"></p>
+                <label for="form-list-name" class="text-base font-medium mb-1" data-t="listName">Tên danh sách</label>
+                <input type="text" id="form-list-name" class="input w-full p-3 text-base rounded-lg mb-4" data-t-placeholder="listNamePlaceholder" placeholder="Ví dụ: Lớp 10A1">
+                <label for="form-members" class="text-base font-medium mb-1" data-t="members">Thành viên (mỗi tên 1 dòng)</label>
+                <textarea id="form-members" class="input w-full p-3 text-base rounded-lg h-40" data-t-placeholder="membersPlaceholder" placeholder="Tên thành viên 1..."></textarea>
+                <button id="form-save-btn" class="btn-theme-primary w-full flex items-center justify-center space-x-2 font-bold py-3 px-4 rounded-lg mt-4 transition-all duration-200 shadow-md">
+                    <svg class="w-5 h-5"><use xlink:href="#icon-save"></use></svg>
+                    <span data-t="save">Lưu</span>
+                </button>
+            </div>
+            
+            <!-- Page 5: Attendance -->
+            <div id="page-attendance" class="page-content p-4">
+                <div class="flex items-center mb-4">
+                    <button id="attendance-back-btn" class="p-2">
+                        <svg class="w-6 h-6"><use xlink:href="#icon-chevron-left"></use></svg>
+                    </button>
+                    <h1 class="text-3xl font-bold ml-2" data-t="attendance">Điểm danh</h1>
+                </div>
+                <h2 id="attendance-list-name" class="text-xl font-semibold mb-4">...</h2>
+                
+                <div class="mb-4">
+                    <button id="view-log-btn" class="w-full flex items-center justify-center space-x-2 font-medium py-3 px-4 rounded-lg transition-all duration-200 shadow-md" style="background-color: var(--color-card); color: var(--color-text)">
+                        <svg class="w-5 h-5"><use xlink:href="#icon-clock"></use></svg>
+                        <span data-t="viewAttendanceLog">Xem nhật ký điểm danh</span>
+                    </button>
+                </div>
+                
+                <div id="dynamic-grid" class=""></div>
+                 <div class="flex space-x-2 mt-6">
+                    <button id="reset-btn" class="w-1/3 flex items-center justify-center space-x-2 font-bold py-3 px-4 rounded-lg transition-all duration-200 shadow-md" style="background-color: var(--color-card); color: var(--color-secondary)">
+                        <svg class="w-5 h-5"><use xlink:href="#icon-refresh"></use></svg>
+                        <span data-t="reset">Reset</span>
+                    </button>
+                    <!-- CẬP NHẬT: Button Hoàn tất hiển thị rõ -->
+                    <button id="complete-btn" class="btn-theme-primary w-2/3 flex items-center justify-center space-x-2 font-bold py-3 px-4 rounded-lg transition-all duration-200 shadow-md">
+                        <svg class="w-5 h-5"><use xlink:href="#icon-check"></use></svg>
+                        <span data-t="complete">Hoàn tất</span>
+                    </button>
+                 </div>
+            </div>
+        </main>
+
+        <!-- Tab Bar -->
+        <nav id="tab-bar" class="flex justify-around items-center h-16 border-t" style="border-color: var(--color-border); background-color: var(--color-card);">
+            <button class="tab-item flex-1 flex flex-col items-center justify-center h-full active" data-page="home">
+                <svg class="w-6 h-6"><use xlink:href="#icon-home"></use></svg>
+                <span class="text-xs font-medium mt-1" data-t="home">Trang chủ</span>
+            </button>
+            <button class="tab-item flex-1 flex flex-col items-center justify-center h-full" data-page="profile">
+                <svg class="w-6 h-6"><use xlink:href="#icon-user"></use></svg>
+                <span class="text-xs font-medium mt-1" data-t="profile">Hồ sơ</span>
+            </button>
+            <button class="tab-item flex-1 flex flex-col items-center justify-center h-full" data-page="settings">
+                <svg class="w-6 h-6"><use xlink:href="#icon-settings"></use></svg>
+                <span class="text-xs font-medium mt-1" data-t="settings">Cài đặt</span>
+            </button>
+        </nav>
+    </div>
+    
+    <!-- FAB Button -->
+    <button id="fab" class="fab rounded-full w-14 h-14 flex items-center justify-center shadow-lg" style="bottom: 80px; right: 16px;">
+        <svg class="w-7 h-7"><use xlink:href="#icon-plus"></use></svg>
+    </button>
+    
+    <!-- Alert Modal -->
+    <div id="alert-modal" class="fixed inset-0 flex items-center justify-center p-4 z-50 hidden opacity-0 modal-backdrop">
+        <div class="modal-content w-full max-w-sm p-6 rounded-lg shadow-xl opacity-0">
+            <h3 id="alert-title" class="text-lg font-bold mb-2"></h3>
+            <p id="alert-message" class="text-sm mb-4" style="color: var(--color-secondary)"></p>
+            <div class="flex justify-end space-x-3">
+                <button id="alert-cancel" class="px-4 py-2 rounded-md text-sm font-medium" style="background-color: var(--color-card); color: var(--color-text)" data-t="cancel">Hủy</button>
+                <button id="alert-confirm" class="px-4 py-2 rounded-md text-sm font-medium text-white bg-red-600" data-t="delete">Xóa</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Results Modal -->
+    <div id="results-modal" class="fixed inset-0 flex items-center justify-center p-4 z-50 hidden opacity-0 modal-backdrop">
+        <div class="modal-content w-full max-w-sm p-6 rounded-lg shadow-xl opacity-0">
+            <h3 id="results-modal-title" class="text-lg font-bold mb-2" data-t="results">Kết quả</h3>
+            <div id="results-summary" class="text-sm mb-3" style="color: var(--color-secondary)"></div>
+            <ul id="results-list"></ul>
+            <div class="flex flex-col space-y-2 mt-4">
+                 <!-- CẬP NHẬT: Button Copy hiển thị rõ -->
+                 <button id="modal-copy-btn" class="w-full flex items-center justify-center space-x-2 text-white font-bold py-3 px-4 rounded-lg transition-all duration-200 shadow-md" style="background-color: var(--color-secondary)">
+                    <svg class="w-5 h-5"><use xlink:href="#icon-copy"></use></svg>
+                    <span id="modal-copy-span" data-t="copyResults" style="color: white !important;">Sao chép Vắng</span>
+                </button>
+                
+                <!-- CẬP NHẬT: Nút AI Report -->
+                <button id="ai-report-btn" class="btn-ai w-full flex items-center justify-center space-x-2 font-bold py-3 px-4 rounded-lg transition-all duration-200 shadow-md">
+                    <svg class="w-5 h-5"><use xlink:href="#icon-sparkles"></use></svg>
+                    <span data-t="aiReport">✨ Báo cáo AI</span>
+                </button>
+
+                <!-- CẬP NHẬT: Button Close hiển thị rõ -->
+                <button id="results-close-btn" class="btn-theme-primary w-full flex items-center justify-center space-x-2 font-bold py-3 px-4 rounded-lg transition-all duration-200 shadow-md">
+                    <svg class="w-5 h-5"><use xlink:href="#icon-x"></use></svg>
+                    <span data-t="close">Đóng</span>
+                </button>
             </div>
         </div>
     </div>
 
-    <script>
-        // Hàm tạo chuỗi ngẫu nhiên 21 ký tự đa ngôn ngữ
-        function generateRandomFilename() {
-            const chars = 
-                '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ' + // Latin/Digits
-                'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя' + // Cyrillic (Nga)
-                'अआइईउऊऋएऐओऔकखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसह' + // Devanagari (Phạn Ngữ)
-                'IVXLCDM' + // Roman Numerals (La Mã)
-                'ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩαβγδεζηθικλμνξοπρστυφχψω' + // Greek (Hy Lạp)
-                '가나다라마바사아자차카타파하' + // Hangul (Hàn Quốc)
-                '你好世界人中大上下左右' + // Hanzi (Trung Quốc)
-                'あいうえおかきくけこサシスセソ' + // Japanese (Hiragana/Katakana)
-                'ÁÀẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬĐÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴáàảãạăằắẳẵặâầấẩẫậđèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵ' + // Vietnamese
-                '+−×÷=≠≈≤≥√∑∫∂∞π€$£%^&*()_+-=[]{};\':"\\|,./<>?!@#'; // Mathematical/Special Symbols
+    <!-- Attendance Log Modal -->
+    <div id="attendance-log-modal" class="fixed inset-0 flex items-center justify-center p-4 z-50 hidden opacity-0 modal-backdrop">
+        <div class="modal-content w-full max-w-sm p-6 rounded-lg shadow-xl opacity-0 max-h-[80vh] overflow-hidden flex flex-col">
+            <div class="attendance-log-header">
+                <h3 class="text-lg font-bold flex items-center">
+                    <svg class="w-5 h-5 mr-2"><use xlink:href="#icon-clock"></use></svg>
+                    <!-- Đã thay đổi tiêu đề -->
+                    <span data-t="attendanceLogDetails">Nhật Ký Điểm Danh</span>
+                </h3>
+                <button id="attendance-log-close-btn" class="ml-auto p-1">
+                    <svg class="w-6 h-6"><use xlink:href="#icon-x"></use></svg>
+                </button>
+            </div>
             
-            let result = '';
-            for (let i = 0; i < 21; i++) {
-                result += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return result;
-        }
-    </script>
-    <script>
-        // --- State ---
-        let mode = 'raw', currentTab = 'data';
-        let datasets = [{ id: 1, name: "Mẫu A", dataStr: "45, 52, 60, 48, 55, 62, 49, 58, 65, 51" }];
-        let manualRows = [{ id: 1, lower: 40, upper: 50, freqs: {} }, { id: 2, lower: 50, upper: 60, freqs: {} }, { id: 3, lower: 60, upper: 70, freqs: {} }];
-        const colors = [
-            { bg: 'rgba(59, 130, 246, 0.5)', border: '#2563eb' }, { bg: 'rgba(239, 68, 68, 0.5)', border: '#dc2626' },
-            { bg: 'rgba(16, 185, 129, 0.5)', border: '#059669' }, { bg: 'rgba(245, 158, 11, 0.5)', border: '#d97706' },
-            { bg: 'rgba(139, 92, 246, 0.5)', border: '#7c3aed' }
-        ];
-        
-        // --- Tabs & Mode ---
-        function switchTab(t) {
-            currentTab = t;
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById(t==='data'?'tabDataBtn':'tabChartsBtn').classList.add('active');
-            document.getElementById('tabDataContent').classList.toggle('hidden', t!=='data');
-            document.getElementById('tabChartsContent').classList.toggle('hidden', t!=='charts');
-            if(t==='charts') calculate();
-        }
-        function switchInputMode(m) {
-            mode = m;
-            document.getElementById('btnRaw').className = mode==='raw' ? "flex-1 py-2 text-sm font-medium rounded bg-indigo-50 text-indigo-700" : "flex-1 py-2 text-sm font-medium rounded text-slate-500 hover:bg-slate-50";
-            document.getElementById('btnTable').className = mode==='table' ? "flex-1 py-2 text-sm font-medium rounded bg-indigo-50 text-indigo-700" : "flex-1 py-2 text-sm font-medium rounded text-slate-500 hover:bg-slate-50";
-            document.getElementById('rawSection').classList.toggle('hidden', mode!=='raw');
-            document.getElementById('tableSection').classList.toggle('hidden', mode!=='table');
-            calculate();
-        }
-
-        // --- Dataset Ops ---
-        function addDataset() {
-            const newId = (datasets.length>0 ? Math.max(...datasets.map(d=>d.id)):0)+1;
-            datasets.push({id:newId, name:`Mẫu ${String.fromCharCode(65+datasets.length)}`, dataStr:""});
-            renderInputs(); calculate();
-        }
-        function removeLastDataset() { if(datasets.length<=1)return; datasets.pop(); renderInputs(); calculate(); }
-        function updateRaw(id, val) { datasets.find(d=>d.id===id).dataStr=val; calculate(); }
-        function updateName(id, val) { datasets.find(d=>d.id===id).name=val; renderInputs(); calculate(); }
-        function renderInputs() {
-            document.getElementById('datasetContainer').innerHTML = datasets.map(ds=>`
-                <div class="bg-white border rounded p-2"><div class="flex justify-between mb-1">
-                <input value="${ds.name}" onchange="updateName(${ds.id}, this.value)" class="text-xs font-bold w-20 border-b outline-none focus:border-indigo-500"></div>
-                <textarea oninput="updateRaw(${ds.id}, this.value)" class="w-full h-12 text-[10px] font-mono border rounded p-1 resize-none">${ds.dataStr}</textarea></div>`).join('');
-            const h = document.getElementById('manualHeaderRow');
-            h.innerHTML = `<th class="p-2 w-12">Dưới</th><th class="p-2 w-12">Trên</th>` + datasets.map(d=>`<th class="p-2 text-center text-indigo-700">${d.name}</th>`).join('') + `<th class="w-6"></th>`;
-            renderManualBody();
-            updatePieSelect();
-        }
-        function updatePieSelect() {
-            const sel = document.getElementById('pieDatasetSelect');
-            sel.innerHTML = datasets.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
-        }
-
-        // --- Manual Table ---
-        function renderManualBody() {
-            document.getElementById('manualBody').innerHTML = manualRows.map(r=>`
-                <tr class="border-b hover:bg-slate-50"><td class="p-1"><input type="number" value="${r.lower}" onchange="updRow(${r.id},'lower',this.value)" class="w-full p-1 border rounded text-center input-cell"></td>
-                <td class="p-1"><input type="number" value="${r.upper}" onchange="updRow(${r.id},'upper',this.value)" class="w-full p-1 border rounded text-center input-cell"></td>
-                ${datasets.map(ds=>`<td class="p-1"><input type="number" value="${r.freqs[ds.id]||0}" min="0" onchange="updRow(${r.id},'freq_${ds.id}',this.value)" class="w-full p-1 border rounded text-center font-bold text-indigo-600 input-cell"></td>`).join('')}
-                <td class="p-1"><button onclick="delRow(${r.id})" class="text-red-300 hover:text-red-500">x</button></td></tr>`).join('');
-        }
-        function addManualRow() {
-            const last = manualRows[manualRows.length-1];
-            let l = last?last.upper:0, w = last?(last.upper-last.lower)||10:10;
-            manualRows.push({id:Date.now(), lower:l, upper:l+w, freqs:{}}); renderManualBody(); calculate();
-        }
-        function delRow(id) { if(manualRows.length>1) { manualRows=manualRows.filter(r=>r.id!==id); renderManualBody(); calculate(); } }
-        function updRow(id, f, val) {
-            const r = manualRows.find(x=>x.id===id); if(!r)return;
-            if(f.startsWith('freq')) r.freqs[parseInt(f.split('_')[1])] = parseInt(val)||0;
-            else { 
-                r[f]=parseFloat(val); 
-                if(manualRows.indexOf(r)===0 && (f==='lower'||f==='upper')) {
-                   const w = manualRows[0].upper - manualRows[0].lower;
-                   if(w>0) { for(let i=1;i<manualRows.length;i++){ manualRows[i].lower=manualRows[i-1].upper; manualRows[i].upper=manualRows[i].lower+w;} renderManualBody(); } 
-                }
-            }
-            calculate();
-        }
-
-        // --- Core Calc ---
-        let lastGroups = [], lastResults = [];
-
-        function calculate() {
-            let groups = [], results = [];
-            const resultsSection = document.getElementById('resultsSection');
-            const emptyState = document.getElementById('emptyState');
-            const chartsWrapper = document.getElementById('chartsWrapper');
-            const emptyChartsState = document.getElementById('emptyChartsState');
-
-            if(mode==='raw') {
-                const pDS = datasets.map(d => ({...d, data: d.dataStr.split(/[\s,;]+/).map(x=>parseFloat(x)).filter(n=>!isNaN(n)).sort((a,b)=>a-b)})).filter(d=>d.data.length>0);
-                if(pDS.length===0) { 
-                    resultsSection.classList.add('hidden'); emptyState.classList.remove('hidden'); 
-                    chartsWrapper.classList.add('hidden'); emptyChartsState.classList.remove('hidden');
-                    return;
-                }
-                const all = pDS.flatMap(d=>d.data), min=Math.min(...all), max=Math.max(...all);
-                const meth = document.getElementById('method').value, uStart=document.getElementById('startValue').value;
-                let start=uStart!==""?parseFloat(uStart):min, k=5, h=10;
-                
-                if(meth==='auto'){ k=Math.ceil(1+3.322*Math.log10(all.length)); h=Math.ceil((max-start)/k)||1; }
-                else if(meth==='manual_width'){ h=parseFloat(document.getElementById('manualH').value)||5; k=Math.ceil((max-start)/h); if(start+k*h<=max)k++;}
-                else { k=parseInt(document.getElementById('manualK').value)||5; h=(max-start)/k; }
-
-                for(let i=0;i<k;i++) groups.push({id:i+1, lower:start+i*h, upper:start+(i+1)*h, midpoint:start+i*h+h/2});
-                results = pDS.map((ds,i)=> processStats(ds.name, groups, colors[i%colors.length], ds.data, null));
-            } else {
-                groups = manualRows.map((r,i)=>({id:i+1, lower:r.lower, upper:r.upper, midpoint:(r.lower+r.upper)/2}));
-                results = datasets.map((ds,i)=> processStats(ds.name, groups, colors[i%colors.length], null, ds.id));
-            }
+            <div id="attendance-log-content" class="flex-1 overflow-y-auto" style="max-height: 300px;">
+                <!-- Attendance log items will be inserted here -->
+            </div>
             
-            const hasData = results.some(r => r.s.N > 0);
-            if(hasData) {
-                resultsSection.classList.remove('hidden'); emptyState.classList.add('hidden');
-                chartsWrapper.classList.remove('hidden'); emptyChartsState.classList.add('hidden');
-                lastGroups = groups; lastResults = results;
-                renderTables(groups, results);
-                if(currentTab==='charts') updateAllCharts(groups, results);
-            } else {
-                resultsSection.classList.add('hidden'); emptyState.classList.remove('hidden');
-                chartsWrapper.classList.add('hidden'); emptyChartsState.classList.remove('hidden');
-            }
-        }
+            <!-- CẬP NHẬT: Button Export hiển thị rõ -->
+            <button id="attendance-log-export-btn" class="btn-theme-primary w-full flex items-center justify-center space-x-2 font-bold py-3 px-4 rounded-lg mt-4 transition-all duration-200 shadow-md">
+                <svg class="w-5 h-5"><use xlink:href="#icon-copy"></use></svg>
+                <span data-t="exportLog">Sao chép nhật ký</span>
+            </button>
+        </div>
+    </div>
 
-        function processStats(name, groups, color, rawData, dsId) {
-            let cf=0;
-            const gStats = groups.map((g, idx) => {
-                let freq = 0;
-                if(rawData) freq = (idx===groups.length-1) ? rawData.filter(x=>x>=g.lower && x<=g.upper+0.0001).length : rawData.filter(x=>x>=g.lower && x<g.upper).length;
-                else freq = manualRows[idx].freqs[dsId] || 0;
-                cf += freq;
-                return {...g, freq, cf};
-            });
-            const N = cf;
-            if(N===0) return {name, color, gStats, rawData: rawData||[], s:{N:0}};
+    <!-- AI Report Modal -->
+    <div id="ai-report-modal" class="fixed inset-0 flex items-center justify-center p-4 z-50 hidden opacity-0 modal-backdrop">
+        <div class="modal-content w-full max-w-sm p-6 rounded-lg shadow-xl opacity-0 max-h-[80vh] overflow-hidden flex flex-col">
+            <div class="attendance-log-header">
+                <h3 class="text-lg font-bold flex items-center" style="color: #a855f7;">
+                    <svg class="w-5 h-5 mr-2"><use xlink:href="#icon-sparkles"></use></svg>
+                    <span>Báo cáo AI</span>
+                </h3>
+                <button id="ai-report-close-btn" class="ml-auto p-1">
+                    <svg class="w-6 h-6"><use xlink:href="#icon-x"></use></svg>
+                </button>
+            </div>
             
-            const mean = gStats.reduce((s,g)=>s+g.freq*g.midpoint,0)/N;
-            const variance = gStats.reduce((s,g)=>s+g.freq*Math.pow(g.midpoint-mean,2),0)/N;
-            const sd = Math.sqrt(variance);
-            const cv = mean!==0 ? (sd/Math.abs(mean))*100 : 0;
+            <div id="ai-report-content" class="flex-1 overflow-y-auto ai-result-content" style="max-height: 300px;">
+                <!-- AI result will be inserted here -->
+            </div>
             
-            let trueMean=null, absErr=null, relErr=null, outliers=[], range=0;
-            if(rawData) {
-                trueMean = rawData.reduce((a,b)=>a+b,0)/N; absErr = Math.abs(trueMean-mean); relErr = trueMean!==0 ? (absErr/Math.abs(trueMean))*100 : 0;
-                range = rawData[rawData.length-1] - rawData[0];
-            } else {
-                const ag = gStats.filter(g=>g.freq>0);
-                if(ag.length) range = ag[ag.length-1].upper - ag[0].lower;
-            }
+            <div id="ai-loading" class="ai-loading hidden">
+                <svg class="animate-spin h-8 w-8 text-indigo-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                    <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                    <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                <span class="ml-3 text-sm font-medium">Đang tạo báo cáo...</span>
+            </div>
+            
+             <button id="ai-copy-btn" class="btn-theme-primary w-full flex items-center justify-center space-x-2 font-bold py-3 px-4 rounded-lg mt-4 transition-all duration-200 shadow-md">
+                <svg class="w-5 h-5"><use xlink:href="#icon-copy"></use></svg>
+                <span data-t="copyResults">Sao chép</span>
+            </button>
+        </div>
+    </div>
 
-            const getQ = (t) => {
-                const g = gStats.find(x=>x.cf>=t);
-                if(!g) return {val:gStats[gStats.length-1].upper, grp:'>Max'};
-                const prev = gStats[g.id-2]?gStats[g.id-2].cf:0;
-                return {val: g.lower + ((t-prev)/g.freq)*(g.upper-g.lower), grp:`[${fmt(g.lower)};${fmt(g.upper)})`};
-            };
-            const q1 = getQ(N/4), q2=getQ(N/2), q3=getQ(3*N/4);
-            const iqr = q3.val - q1.val;
+<script>
+    // 1. CÁC BIẾN TOÀN CỤC VÀ HÀM TIỆN ÍCH (Sắp xếp lên đầu để tránh ReferenceError)
+    
+    // --- API KEY CHO GEMINI ---
+    const GEMINI_API_KEY = ""; // Hãy điền API Key của bạn vào đây
 
-            let maxF=-1, mG=null; gStats.forEach(g=>{if(g.freq>maxF){maxF=g.freq; mG=g;}});
-            let mode = 0;
-            if(mG) {
-                const i=gStats.indexOf(mG), p=(i>0?gStats[i-1].freq:0), n=(i<gStats.length-1?gStats[i+1].freq:0);
-                mode = mG.lower + ((mG.freq-p)/((mG.freq-p)+(mG.freq-n)))*(mG.upper-mG.lower);
-            }
+    const translations = {
+        'vi': {
+            home: 'Trang chủ', profile: 'Hồ sơ', settings: 'Cài đặt',
+            myLists: 'Danh sách của tôi', emptyList: 'Chưa có danh sách nào. Hãy tạo một cái mới!',
+            createList: 'Tạo danh sách mới', editList: 'Chỉnh sửa danh sách',
+            listName: 'Tên danh sách', listNamePlaceholder: 'Ví dụ: Lớp 10A1',
+            members: 'Thành viên (mỗi tên 1 dòng)', save: 'Lưu', cancel: 'Hủy',
+            delete: 'Xóa', start: 'Bắt đầu', edit: 'Sửa', error: 'Lỗi',
+            fillAllFields: 'Vui lòng điền tên danh sách và ít nhất 1 thành viên.',
+            confirmDelete: 'Xác nhận xóa', confirmDeleteMessage: 'Bạn có chắc muốn xóa danh sách này?',
+            attendance: 'Điểm danh', 
+            complete: 'Hoàn tất', results: 'Kết quả',
+            allPresent: 'Tất cả thành viên đều có mặt!', 
+            absent: 'Vắng', present: 'Có mặt', total: 'Tổng số',
+            backHome: 'Về trang chủ', changeAvatar: 'Thay đổi Avatar',
+            displayName: 'Tên hiển thị', notes: 'Ghi chú',
+            myListDirectory: 'Mục lục danh sách', language: 'Ngôn ngữ',
+            theme: 'Giao diện', backgroundColor: 'Màu nền', textColor: 'Màu chữ',
+            copyResults: 'Sao chép Vắng', copied: 'Đã sao chép!',
+            reset: 'Reset', close: 'Đóng',
+            membersCount: 'Thành viên',
+            palette: 'Bảng màu', hex: 'Mã Hex',
+            displayNamePlaceholder: 'Nhập tên của bạn',
+            notesPlaceholder: 'Ghi chú cá nhân...',
+            membersPlaceholder: 'Tên thành viên 1\nTên thành viên 2\n...',
+            hexBgPlaceholder: '#FFFFFF', hexTextPlaceholder: '#111827',
+            searchPlaceholder: 'Tìm kiếm danh sách...',
+            noResults: 'Không tìm thấy kết quả.',
+            viewAttendanceLog: 'Xem nhật ký điểm danh',
+            attendanceLogDetails: 'Nhật Ký Điểm Danh',
+            exportLog: 'Sao chép nhật ký',
+            noAttendanceRecords: 'Chưa có bản ghi điểm danh nào.',
+            time: 'Thời gian',
+            markedAt: 'Điểm danh lúc',
+            sort: 'Sắp xếp',
+            done: 'Xong',
+            aiReport: '✨ Báo cáo AI',
+            generating: 'Đang tạo...',
+            aiError: 'Lỗi khi gọi AI. Vui lòng kiểm tra API Key.',
+        },
+        'en': {
+            home: 'Home', profile: 'Profile', settings: 'Settings',
+            myLists: 'My Lists', emptyList: 'No lists yet. Create a new one!',
+            createList: 'Create New List', editList: 'Edit List',
+            listName: 'List Name', listNamePlaceholder: 'E.g., Class 10A1',
+            members: 'Members (one name per line)', save: 'Save', cancel: 'Cancel',
+            delete: 'Delete', start: 'Start', edit: 'Edit', error: 'Error',
+            fillAllFields: 'Please enter a list name and at least one member.',
+            confirmDelete: 'Confirm Deletion', confirmDeleteMessage: 'Are you sure you want to delete this list?',
+            attendance: 'Attendance', 
+            complete: 'Complete', results: 'Results',
+            allPresent: 'All members are present!', 
+            absent: 'Absent', present: 'Present', total: 'Total',
+            backHome: 'Back to Home', changeAvatar: 'Change Avatar',
+            displayName: 'Display Name', notes: 'Notes',
+            myListDirectory: 'My List Directory', language: 'Language',
+            theme: 'Theme', backgroundColor: 'Background Color', textColor: 'Text Color',
+            copyResults: 'Copy Absentees', copied: 'Copied!',
+            reset: 'Reset', close: 'Close', 
+            membersCount: 'Members',
+            palette: 'Palette', hex: 'Hex',
+            displayNamePlaceholder: 'Enter your name',
+            notesPlaceholder: 'Personal notes...',
+            membersPlaceholder: 'Member Name 1\nMember Name 2\n...',
+            hexBgPlaceholder: '#FFFFFF', hexTextPlaceholder: '#111827',
+            searchPlaceholder: 'Search lists...',
+            noResults: 'No results found.',
+            viewAttendanceLog: 'View Attendance Log',
+            attendanceLogDetails: 'Attendance Log',
+            exportLog: 'Export Log',
+            noAttendanceRecords: 'No attendance records yet.',
+            time: 'Time',
+            markedAt: 'Marked at',
+            sort: 'Sort',
+            done: 'Done',
+            aiReport: '✨ AI Report',
+            generating: 'Generating...',
+            aiError: 'AI Error. Check API Key.',
+        },
+        // ... (Giữ nguyên các ngôn ngữ khác nếu cần, hoặc fallback về EN) ...
+    };
+    
+    const languages = [
+        { code: 'vi', name: 'Tiếng Việt' }, { code: 'en', name: 'English' },
+        { code: 'zh', name: '中文' }, { code: 'fr', name: 'Français' },
+        { code: 'ja', name: '日本語' }, { code: 'ru', name: 'Русский' },
+        { code: 'ko', name: '한국어' }, { code: 'hi', name: 'हिन्दी' },
+        { code: 'es', name: 'Español' }, { code: 'ar', name: 'العربية' },
+        { code: 'pt', name: 'Português' }, { code: 'bn', name: 'বাংলা' },
+        { code: 'de', name: 'Deutsch' },
+    ];
+    
+    const PRESET_COLORS = [
+        '#FFFFFF', '#F3F4F6', '#E5E7EB', '#9CA3AF', '#6B7280', '#374151', '#1F2937', '#111827',
+        '#FEE2E2', '#EF4444', '#FCD34D', '#F59E0B', '#F97316', '#D97706', '#B45309', '#7C2D12',
+        '#D1FAE5', '#10B981', '#059669', '#065F46', '#A7F3D0', '#14B8A6', '#0D9488', '#0F766E',
+        '#DBEAFE', '#3B82F6', '#2563EB', '#1D4ED8', '#E0E7FF', '#6366F1', '#4F46E5', '#4338CA',
+    ];
 
-            if(rawData) {
-                const lf=q1.val-1.5*iqr, uf=q3.val+1.5*iqr;
-                outliers=rawData.filter(x=>x<lf||x>uf);
-            }
+    let appLanguage = 'vi';
+    let appTheme = {
+        background: '#FFFFFF', text: '#111827',
+        secondary: '#6B7280', card: '#F3F4F6', border: '#E5E7EB',
+    };
+    let allLists = [];
+    let userProfile = { name: 'Người dùng', avatar: 'https://placehold.co/100x100/E2E8F0/4A5568?text=User', notes: '' };
+    let activeAttendanceList = [];
+    let currentAbsentList = [];
+    let editingListId = null;
+    let modalConfirmCallback = null;
+    let currentListId = null; 
+    let allAttendanceStates = {}; 
+    let previousPageForAttendance = 'page-home';
+    let previousPageForForm = 'page-home';
+    let isSortMode = false;
 
-            return { name, color, gStats, rawData: rawData || generateSimulatedData(gStats), s: {
-                N, mean, trueMean, absErr, relErr, variance, sd, cv, range,
-                q1:q1.val, q2:q2.val, q3:q3.val, iqr, mode, q1Loc:q1.grp, q2Loc:q2.grp, q3Loc:q3.grp,
-                outliers, disp: cv<10?"Thấp":cv<30?"TB":"Cao"
-            }};
-        }
+    // --- Page Transitions ---
+    let pageHistory = ['page-home'];
+    const tabOrder = ['page-home', 'page-profile', 'page-settings'];
 
-        function generateSimulatedData(gStats) {
-            let data = [];
-            gStats.forEach(g => {
-                for(let i=0; i<g.freq; i++) {
-                    const jitter = (Math.random() - 0.5) * (g.upper - g.lower) * 0.8;
-                    data.push(g.midpoint + jitter);
-                }
-            });
-            return data.sort((a,b)=>a-b);
-        }
+    // DOM Elements
+    const allPages = document.querySelectorAll('.page-content');
+    const tabItems = document.querySelectorAll('.tab-item');
+    const fab = document.getElementById('fab');
+    const listsContainer = document.getElementById('lists-container');
+    const emptyListText = document.getElementById('empty-list-text');
+    const searchInput = document.getElementById('search-input');
+    const profileAvatarImg = document.getElementById('profile-avatar-img');
+    const avatarUploadInput = document.getElementById('avatar-upload-input');
+    const profileNameInput = document.getElementById('profile-name');
+    const profileNotesInput = document.getElementById('profile-notes');
+    const profileListsDirectory = document.getElementById('profile-lists-directory');
+    const languagePicker = document.getElementById('language-picker');
+    const bgColorPreview = document.getElementById('bg-color-preview');
+    const bgPaletteContainer = document.getElementById('bg-palette-container');
+    const bgHexContainer = document.getElementById('bg-hex-container');
+    const bgHexInput = document.getElementById('bg-hex-input');
+    const textColorPreview = document.getElementById('text-color-preview');
+    const textPaletteContainer = document.getElementById('text-palette-container');
+    const textHexContainer = document.getElementById('text-hex-container');
+    const textHexInput = document.getElementById('text-hex-input');
+    const colorToggleButtons = document.querySelectorAll('.color-toggle-btn');
+    const formPage = document.getElementById('page-form');
+    const formTitle = document.getElementById('form-title');
+    const formError = document.getElementById('form-error');
+    const formBackBtn = document.getElementById('form-back-btn');
+    const formListName = document.getElementById('form-list-name');
+    const formMembers = document.getElementById('form-members');
+    const formSaveBtn = document.getElementById('form-save-btn');
+    const attendancePage = document.getElementById('page-attendance');
+    const attendanceBackBtn = document.getElementById('attendance-back-btn');
+    const attendanceListName = document.getElementById('attendance-list-name');
+    const dynamicGrid = document.getElementById('dynamic-grid');
+    const completeBtn = document.getElementById('complete-btn');
+    const resetBtn = document.getElementById('reset-btn'); 
+    const alertModal = document.getElementById('alert-modal');
+    const alertTitle = document.getElementById('alert-title');
+    const alertMessage = document.getElementById('alert-message');
+    const alertCancel = document.getElementById('alert-cancel');
+    const alertConfirm = document.getElementById('alert-confirm');
+    const resultsModal = document.getElementById('results-modal');
+    const resultsModalTitle = document.getElementById('results-modal-title');
+    const resultsSummary = document.getElementById('results-summary');
+    const resultsList = document.getElementById('results-list');
+    const modalCopyBtn = document.getElementById('modal-copy-btn');
+    const modalCopySpan = document.getElementById('modal-copy-span');
+    const resultsCloseBtn = document.getElementById('results-close-btn');
+    const toggleSortBtn = document.getElementById('toggle-sort-btn');
+    
+    // Biến cho modal log
+    const viewLogBtn = document.getElementById('view-log-btn');
+    const attendanceLogModal = document.getElementById('attendance-log-modal');
+    const attendanceLogContent = document.getElementById('attendance-log-content');
+    const attendanceLogCloseBtn = document.getElementById('attendance-log-close-btn');
+    const attendanceLogExportBtn = document.getElementById('attendance-log-export-btn');
 
-        function renderTables(groups, results) {
-            const m = [
-                {id:'N', l:'Tổng số (N)'}, {id:'trueMean', l:'Số đúng (x̄ gốc)', raw:1}, {id:'mean', l:'Số gần đúng (x̄ nhóm)'},
-                {id:'absErr', l:'Sai số tuyệt đối', raw:1}, {id:'relErr', l:'Sai số tương đối (%)', raw:1},
-                {id:'q2', l:'Trung vị (Me)'}, {id:'q1', l:'Q1'}, {id:'q3', l:'Q3'}, {id:'mode', l:'Mốt (Mo)'},
-                {id:'range', l:'Khoảng biến thiên (R)'}, {id:'iqr', l:'IQR'}, {id:'variance', l:'Phương sai (s²)'},
-                {id:'sd', l:'Độ lệch chuẩn (s)'}, {id:'cv', l:'CV (%)'}, {id:'disp', l:'Mức độ phân tán', txt:1},
-                {id:'outliers', l:'Ngoại lai (sl)', raw:1, len:1},
-                {id:'q1Loc', l:'Vị trí Q1', txt:1}, {id:'q2Loc', l:'Vị trí Me', txt:1}, {id:'q3Loc', l:'Vị trí Q3', txt:1}
-            ];
-            let h = `<thead><tr class="bg-indigo-50 border-b"><th class="px-4 py-2">Chỉ số</th>`+results.map(r=>`<th class="px-4 py-2 text-center" style="color:${r.color.border}">${r.name}</th>`).join('')+`</tr></thead><tbody>`;
-            m.forEach(x => {
-                h += `<tr class="border-b last:border-0 hover:bg-slate-50"><td class="px-4 py-2 font-medium text-slate-600">${x.l}</td>` + results.map(r=>{
-                    let v = r.s[x.id];
-                    if(x.raw && mode==='table') return `<td class="text-center text-slate-300 italic">N/A</td>`;
-                    if(v===undefined) return `<td>-</td>`;
-                    if(x.len) return `<td class="text-center font-bold text-red-600">${v.length}</td>`;
-                    if(x.txt) return `<td class="text-center text-slate-700">${v}</td>`;
-                    return `<td class="text-center font-bold text-slate-700">${fmt(v)}</td>`;
-                }).join('') + `</tr>`;
-            });
-            document.getElementById('statsTable').innerHTML = h+`</tbody>`;
+    // Biến cho AI Report
+    const aiReportBtn = document.getElementById('ai-report-btn');
+    const aiReportModal = document.getElementById('ai-report-modal');
+    const aiReportContent = document.getElementById('ai-report-content');
+    const aiLoading = document.getElementById('ai-loading');
+    const aiReportCloseBtn = document.getElementById('ai-report-close-btn');
+    const aiCopyBtn = document.getElementById('ai-copy-btn');
 
-            let fh = `<thead><tr class="bg-indigo-50 border-b"><th class="px-4 py-2">Nhóm</th><th class="px-4 py-2 text-center">c_i</th>`+results.map(r=>`<th class="px-4 py-2 text-center" style="color:${r.color.border}">f (${r.name})</th>`).join('')+`</tr></thead><tbody>`;
-            groups.forEach((g,i)=>{
-                fh += `<tr class="border-b hover:bg-slate-50"><td class="px-4 py-2 text-slate-800">[${fmt(g.lower)}; ${fmt(g.upper)})</td><td class="px-4 py-2 text-center text-slate-500">${fmt(g.midpoint)}</td>`+results.map(r=>`<td class="px-4 py-2 text-center font-bold">${r.gStats[i].freq}</td>`).join('')+`</tr>`;
-            });
-            document.getElementById('freqTable').innerHTML = fh+`</tbody>`;
-        }
+    let points = [];
+    let isDrawing = false;
+    let sortableInstance = null;
+    let touchStartX = 0;
+    let touchEndX = 0;
+    let isCircleActionTriggered = false;
 
-        let charts = {};
-        function updateAllCharts(groups, results) {
-            const l = groups.map(g=>`[${fmt(g.lower)}; ${fmt(g.upper)})`);
-            const ol = [fmt(groups[0].lower), ...groups.map(g=>fmt(g.upper))]; 
-            const ds = (fn, type, fill) => results.map(r=>({
-                label: r.name, data: fn(r), backgroundColor: r.color.bg, borderColor: r.color.border, 
-                borderWidth: 1.5, tension: 0.3, fill: fill
-            }));
+    // 2. HELPER FUNCTIONS
+    function t(key, params = {}) {
+        let translation = translations[appLanguage]?.[key] || translations['en']?.[key] || key;
+        Object.keys(params).forEach(param => {
+            translation = translation.replace(`{${param}}`, params[param]);
+        });
+        return translation;
+    }
 
-            draw('chartHistogram', 'bar', l, ds(r=>r.gStats.map(g=>g.freq), 'bar', false), {scales:{x:{stacked:false},y:{beginAtZero:true}}});
-            draw('chartPolygon', 'line', groups.map(g=>fmt(g.midpoint)), ds(r=>r.gStats.map(g=>g.freq), 'line', false), {elements:{line:{tension:0}}});
-            draw('chartStacked', 'bar', l, ds(r=>r.gStats.map(g=>g.freq), 'bar', false), {scales:{x:{stacked:true},y:{stacked:true}}});
-            draw('chartRelFreq', 'bar', l, ds(r=>r.gStats.map(g=>(g.freq/r.s.N)*100), 'bar', false), {scales:{y:{beginAtZero:true, title:{display:true,text:'%'}}}});
-            draw('chartArea', 'line', l, ds(r=>r.gStats.map(g=>g.freq), 'line', true), {scales:{y:{stacked:true, beginAtZero:true}}, elements:{line:{tension:0.4}}});
-            draw('chartOgive', 'line', ol, ds(r=>[0, ...r.gStats.map(g=>g.cf)], 'line', false), {elements:{line:{tension:0.2}}});
-            updatePieChart();
-
-            const boxData = results.map(r => ({ label: r.name, backgroundColor: r.color.bg, borderColor: r.color.border, borderWidth: 1, outlierColor: '#ef4444', padding: 10, itemRadius: 0, data: [r.rawData] }));
-            draw('chartBox', 'boxplot', ['Phân bố'], boxData, {});
-
-            const violinData = results.map(r => ({ label: r.name, backgroundColor: r.color.bg, borderColor: r.color.border, borderWidth: 1, data: [r.rawData] }));
-            draw('chartViolin', 'violin', ['Mật độ'], violinData, {});
-
-            const scatterData = results.map(r => ({ label: r.name, backgroundColor: r.color.border, data: r.rawData.map((val, idx) => ({ x: val, y: Math.random() * 0.5 + results.indexOf(r) })) }));
-            draw('chartScatter', 'scatter', null, scatterData, { scales: { x: { type: 'linear', position: 'bottom', title: {display:true, text:'Giá trị'} }, y: { display: false } } });
-        }
-
-        function updatePieChart() {
-            const dsId = parseInt(document.getElementById('pieDatasetSelect').value) || (datasets[0]?datasets[0].id:0);
-            const dataset = datasets.find(d => d.id === dsId);
-            if(!dataset || !lastGroups.length) return;
-            let gStats = [];
-            if(mode==='raw') {
-                const data = dataset.dataStr.split(/[\s,;]+/).map(x=>parseFloat(x)).filter(n=>!isNaN(n));
-                gStats = lastGroups.map(g => ({...g, freq: data.filter(x=>x>=g.lower && x<g.upper).length}));
-            } else {
-                gStats = lastGroups.map((g,i) => ({...g, freq: manualRows[i].freqs[dsId]||0}));
-            }
-            const data = { labels: lastGroups.map(g => `[${fmt(g.lower)}; ${fmt(g.upper)})`), datasets: [{ data: gStats.map(g => g.freq), backgroundColor: ['#60a5fa','#f87171','#34d399','#fbbf24','#a78bfa','#f472b6','#9ca3af'] }] };
-            draw('chartPie', 'doughnut', data.labels, data.datasets, {});
-        }
-
-        function draw(id, type, l, d, opt) {
-            const ctx = document.getElementById(id).getContext('2d');
-            if(charts[id]) charts[id].destroy();
-            charts[id] = new Chart(ctx, {type, data:{labels:l, datasets:d}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, ...opt}});
-        }
-
-        // --- Download Functions ---
-        function downloadTableImage(tableId, baseName, format) {
-            const element = document.getElementById(tableId);
-            const randomId = generateRandomFilename();
-            const fileName = `${randomId}.${format}`;
-
-            html2canvas(element, { scale: 2, backgroundColor: '#ffffff' }).then(canvas => {
-                const link = document.createElement('a');
-                link.href = canvas.toDataURL(`image/${format}`);
-                link.download = fileName;
-                link.click();
-            });
-        }
-
-        function downloadChartImage(chartId, baseName, format) {
-            const chart = charts[chartId];
-            if (!chart) {
-                alert('Biểu đồ chưa được tạo. Vui lòng nhập dữ liệu.');
+    function updateUIStrings() {
+        document.querySelectorAll('[data-t]').forEach(el => {
+            if (el.id === 'modal-copy-span' && el.textContent === t('copied')) {
                 return;
             }
-            
-            const randomId = generateRandomFilename();
-            const fileName = `${randomId}.${format}`;
-
-            const canvas = chart.canvas;
-            const link = document.createElement('a');
-            link.href = chart.toBase64Image(`image/${format}`); // Sử dụng hàm của Chart.js để lấy base64 image
-            link.download = fileName;
-            link.click();
-        }
-
-        function fmt(n) { const d=parseInt(document.getElementById('decimalPlaces').value)||2; return (n===undefined||n===null)?"-":new Intl.NumberFormat('vi-VN',{minimumFractionDigits:d,maximumFractionDigits:d}).format(n); }
-        function toggleInputs() { const m=document.getElementById('method').value; document.getElementById('inputH').classList.toggle('hidden', m!=='manual_width'); document.getElementById('inputK').classList.toggle('hidden', m!=='manual_count'); }
-        function copyTable() { 
-            const el = document.getElementById('freqTable'); let range, sel;
-            if (document.createRange && window.getSelection) { range = document.createRange(); sel = window.getSelection(); sel.removeAllRanges(); try { range.selectNodeContents(el); sel.addRange(range); } catch (e) { range.selectNode(el); sel.addRange(range); } document.execCommand("copy"); sel.removeAllRanges(); alert("Đã sao chép!"); }
-        }
-
-        // --- Sharing Feature ---
-        function shareLink() {
-            const state = {
-                m: mode,
-                ds: datasets.map(d => ({ n: d.name, s: d.dataStr })),
-                mr: manualRows.map(r => ({ l: r.lower, u: r.upper, f: r.freqs })),
-                dp: document.getElementById('decimalPlaces').value,
-                meth: document.getElementById('method').value,
-                h: document.getElementById('manualH').value,
-                k: document.getElementById('manualK').value,
-                sv: document.getElementById('startValue').value
-            };
-            const json = JSON.stringify(state);
-            const base64 = btoa(unescape(encodeURIComponent(json)));
-            const url = new URL(window.location.href);
-            url.searchParams.set('share', base64);
-            
-            navigator.clipboard.writeText(url.toString()).then(() => {
-                alert("Link chia sẻ đã được sao chép vào bộ nhớ tạm!");
-            }).catch(err => {
-                console.error('Could not copy text: ', err);
-                prompt("Sao chép link chia sẻ tại đây:", url.toString());
-            });
-        }
-
-        function loadSharedData() {
-            const params = new URLSearchParams(window.location.search);
-            const sharedData = params.get('share');
-            if (!sharedData) return;
-
-            try {
-                const json = decodeURIComponent(escape(atob(sharedData)));
-                const state = JSON.parse(json);
-                
-                if (state.m) mode = state.m;
-                if (state.ds) datasets = state.ds.map((d, i) => ({ id: i + 1, name: d.n, dataStr: d.s }));
-                if (state.mr) manualRows = state.mr.map((r, i) => ({ id: Date.now() + i, lower: r.l, upper: r.u, freqs: r.f }));
-                
-                if (state.dp) document.getElementById('decimalPlaces').value = state.dp;
-                if (state.meth) document.getElementById('method').value = state.meth;
-                if (state.h) document.getElementById('manualH').value = state.h;
-                if (state.k) document.getElementById('manualK').value = state.k;
-                if (state.sv) document.getElementById('startValue').value = state.sv;
-
-                toggleInputs();
-                if (mode === 'table') {
-                    document.getElementById('btnRaw').className = "flex-1 py-2 text-sm font-medium rounded text-slate-500 hover:bg-slate-50";
-                    document.getElementById('btnTable').className = "flex-1 py-2 text-sm font-medium rounded bg-indigo-50 text-indigo-700";
-                    document.getElementById('rawSection').classList.add('hidden');
-                    document.getElementById('tableSection').classList.remove('hidden');
-                }
-            } catch (e) {
-                console.error("Error loading shared data:", e);
-            }
-        }
-
-        // --- Home Navigation ---
-        function goHome() {
-            // Chuyển về tab "Dữ liệu & Thống kê"
-            switchTab('data');
-            // Cuộn lên đầu trang
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-
-        window.onload = () => { 
-            loadSharedData();
-            renderInputs(); 
-            calculate(); 
-        };
-    // Placeholder for existing logic from AAV/index.html
-    // (In a real scenario, I would append the full JS here or keep it in a separate file)
-    // For this task, I will assume the JS is already there or I will append it.
-    </script>
-    <script>
-        // Hàm tạo chuỗi ngẫu nhiên 21 ký tự đa ngôn ngữ
-        function generateRandomFilename() {
-            const chars = 
-                '0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ' + // Latin/Digits
-                'АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдеёжзийклмнопрстуфхцчшщъыьэюя' + // Cyrillic (Nga)
-                'अआइईउऊऋएऐओऔकखगघङचछजझञटठडढणतथदधनपफबभमयरलवशषसह' + // Devanagari (Phạn Ngữ)
-                'IVXLCDM' + // Roman Numerals (La Mã)
-                'ΑΒΓΔΕΖΗΘΙΚΛΜΝΞΟΠΡΣΤΥΦΧΨΩαβγδεζηθικλμνξοπρστυφχψω' + // Greek (Hy Lạp)
-                '가나다라마바사아자차카타파하' + // Hangul (Hàn Quốc)
-                '你好世界人中大上下左右' + // Hanzi (Trung Quốc)
-                'あいうえおかきくけこサシスセソ' + // Japanese (Hiragana/Katakana)
-                'ÁÀẢÃẠĂẰẮẲẴẶÂẦẤẨẪẬĐÈÉẺẼẸÊỀẾỂỄỆÌÍỈĨỊÒÓỎÕỌÔỒỐỔỖỘƠỜỚỞỠỢÙÚỦŨỤƯỪỨỬỮỰỲÝỶỸỴáàảãạăằắẳẵặâầấẩẫậđèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵ' + // Vietnamese
-                '+−×÷=≠≈≤≥√∑∫∂∞π€$£%^&*()_+-=[]{};\':"\\|,./<>?!@#'; // Mathematical/Special Symbols
-            
-            let result = '';
-            for (let i = 0; i < 21; i++) {
-                result += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return result;
-        }
-    </script>
-    <script>
-        // --- State ---
-        let mode = 'raw', currentTab = 'data';
-        let datasets = [{ id: 1, name: "Mẫu A", dataStr: "45, 52, 60, 48, 55, 62, 49, 58, 65, 51" }];
-        let manualRows = [{ id: 1, lower: 40, upper: 50, freqs: {} }, { id: 2, lower: 50, upper: 60, freqs: {} }, { id: 3, lower: 60, upper: 70, freqs: {} }];
-        const colors = [
-            { bg: 'rgba(59, 130, 246, 0.5)', border: '#2563eb' }, { bg: 'rgba(239, 68, 68, 0.5)', border: '#dc2626' },
-            { bg: 'rgba(16, 185, 129, 0.5)', border: '#059669' }, { bg: 'rgba(245, 158, 11, 0.5)', border: '#d97706' },
-            { bg: 'rgba(139, 92, 246, 0.5)', border: '#7c3aed' }
-        ];
-        
-        // --- Tabs & Mode ---
-        function switchTab(t) {
-            currentTab = t;
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById(t==='data'?'tabDataBtn':'tabChartsBtn').classList.add('active');
-            document.getElementById('tabDataContent').classList.toggle('hidden', t!=='data');
-            document.getElementById('tabChartsContent').classList.toggle('hidden', t!=='charts');
-            if(t==='charts') calculate();
-        }
-        function switchInputMode(m) {
-            mode = m;
-            document.getElementById('btnRaw').className = mode==='raw' ? "flex-1 py-2 text-sm font-medium rounded bg-indigo-50 text-indigo-700" : "flex-1 py-2 text-sm font-medium rounded text-slate-500 hover:bg-slate-50";
-            document.getElementById('btnTable').className = mode==='table' ? "flex-1 py-2 text-sm font-medium rounded bg-indigo-50 text-indigo-700" : "flex-1 py-2 text-sm font-medium rounded text-slate-500 hover:bg-slate-50";
-            document.getElementById('rawSection').classList.toggle('hidden', mode!=='raw');
-            document.getElementById('tableSection').classList.toggle('hidden', mode!=='table');
-            calculate();
-        }
-
-        // --- Dataset Ops ---
-        function addDataset() {
-            const newId = (datasets.length>0 ? Math.max(...datasets.map(d=>d.id)):0)+1;
-            datasets.push({id:newId, name:`Mẫu ${String.fromCharCode(65+datasets.length)}`, dataStr:""});
-            renderInputs(); calculate();
-        }
-        function removeLastDataset() { if(datasets.length<=1)return; datasets.pop(); renderInputs(); calculate(); }
-        function updateRaw(id, val) { datasets.find(d=>d.id===id).dataStr=val; calculate(); }
-        function updateName(id, val) { datasets.find(d=>d.id===id).name=val; renderInputs(); calculate(); }
-        function renderInputs() {
-            document.getElementById('datasetContainer').innerHTML = datasets.map(ds=>`
-                <div class="bg-white border rounded p-2"><div class="flex justify-between mb-1">
-                <input value="${ds.name}" onchange="updateName(${ds.id}, this.value)" class="text-xs font-bold w-20 border-b outline-none focus:border-indigo-500"></div>
-                <textarea oninput="updateRaw(${ds.id}, this.value)" class="w-full h-12 text-[10px] font-mono border rounded p-1 resize-none">${ds.dataStr}</textarea></div>`).join('');
-            const h = document.getElementById('manualHeaderRow');
-            h.innerHTML = `<th class="p-2 w-12">Dưới</th><th class="p-2 w-12">Trên</th>` + datasets.map(d=>`<th class="p-2 text-center text-indigo-700">${d.name}</th>`).join('') + `<th class="w-6"></th>`;
-            renderManualBody();
-            updatePieSelect();
-        }
-        function updatePieSelect() {
-            const sel = document.getElementById('pieDatasetSelect');
-            sel.innerHTML = datasets.map(d => `<option value="${d.id}">${d.name}</option>`).join('');
-        }
-
-        // --- Manual Table ---
-        function renderManualBody() {
-            document.getElementById('manualBody').innerHTML = manualRows.map(r=>`
-                <tr class="border-b hover:bg-slate-50"><td class="p-1"><input type="number" value="${r.lower}" onchange="updRow(${r.id},'lower',this.value)" class="w-full p-1 border rounded text-center input-cell"></td>
-                <td class="p-1"><input type="number" value="${r.upper}" onchange="updRow(${r.id},'upper',this.value)" class="w-full p-1 border rounded text-center input-cell"></td>
-                ${datasets.map(ds=>`<td class="p-1"><input type="number" value="${r.freqs[ds.id]||0}" min="0" onchange="updRow(${r.id},'freq_${ds.id}',this.value)" class="w-full p-1 border rounded text-center font-bold text-indigo-600 input-cell"></td>`).join('')}
-                <td class="p-1"><button onclick="delRow(${r.id})" class="text-red-300 hover:text-red-500">x</button></td></tr>`).join('');
-        }
-        function addManualRow() {
-            const last = manualRows[manualRows.length-1];
-            let l = last?last.upper:0, w = last?(last.upper-last.lower)||10:10;
-            manualRows.push({id:Date.now(), lower:l, upper:l+w, freqs:{}}); renderManualBody(); calculate();
-        }
-        function delRow(id) { if(manualRows.length>1) { manualRows=manualRows.filter(r=>r.id!==id); renderManualBody(); calculate(); } }
-        function updRow(id, f, val) {
-            const r = manualRows.find(x=>x.id===id); if(!r)return;
-            if(f.startsWith('freq')) r.freqs[parseInt(f.split('_')[1])] = parseInt(val)||0;
-            else { 
-                r[f]=parseFloat(val); 
-                if(manualRows.indexOf(r)===0 && (f==='lower'||f==='upper')) {
-                   const w = manualRows[0].upper - manualRows[0].lower;
-                   if(w>0) { for(let i=1;i<manualRows.length;i++){ manualRows[i].lower=manualRows[i-1].upper; manualRows[i].upper=manualRows[i].lower+w;} renderManualBody(); } 
-                }
-            }
-            calculate();
-        }
-
-        // --- Core Calc ---
-        let lastGroups = [], lastResults = [];
-
-        function calculate() {
-            let groups = [], results = [];
-            const resultsSection = document.getElementById('resultsSection');
-            const emptyState = document.getElementById('emptyState');
-            const chartsWrapper = document.getElementById('chartsWrapper');
-            const emptyChartsState = document.getElementById('emptyChartsState');
-
-            if(mode==='raw') {
-                const pDS = datasets.map(d => ({...d, data: d.dataStr.split(/[\s,;]+/).map(x=>parseFloat(x)).filter(n=>!isNaN(n)).sort((a,b)=>a-b)})).filter(d=>d.data.length>0);
-                if(pDS.length===0) { 
-                    resultsSection.classList.add('hidden'); emptyState.classList.remove('hidden'); 
-                    chartsWrapper.classList.add('hidden'); emptyChartsState.classList.remove('hidden');
-                    return;
-                }
-                const all = pDS.flatMap(d=>d.data), min=Math.min(...all), max=Math.max(...all);
-                const meth = document.getElementById('method').value, uStart=document.getElementById('startValue').value;
-                let start=uStart!==""?parseFloat(uStart):min, k=5, h=10;
-                
-                if(meth==='auto'){ k=Math.ceil(1+3.322*Math.log10(all.length)); h=Math.ceil((max-start)/k)||1; }
-                else if(meth==='manual_width'){ h=parseFloat(document.getElementById('manualH').value)||5; k=Math.ceil((max-start)/h); if(start+k*h<=max)k++;}
-                else { k=parseInt(document.getElementById('manualK').value)||5; h=(max-start)/k; }
-
-                for(let i=0;i<k;i++) groups.push({id:i+1, lower:start+i*h, upper:start+(i+1)*h, midpoint:start+i*h+h/2});
-                results = pDS.map((ds,i)=> processStats(ds.name, groups, colors[i%colors.length], ds.data, null));
-            } else {
-                groups = manualRows.map((r,i)=>({id:i+1, lower:r.lower, upper:r.upper, midpoint:(r.lower+r.upper)/2}));
-                results = datasets.map((ds,i)=> processStats(ds.name, groups, colors[i%colors.length], null, ds.id));
-            }
-            
-            const hasData = results.some(r => r.s.N > 0);
-            if(hasData) {
-                resultsSection.classList.remove('hidden'); emptyState.classList.add('hidden');
-                chartsWrapper.classList.remove('hidden'); emptyChartsState.classList.add('hidden');
-                lastGroups = groups; lastResults = results;
-                renderTables(groups, results);
-                if(currentTab==='charts') updateAllCharts(groups, results);
-            } else {
-                resultsSection.classList.add('hidden'); emptyState.classList.remove('hidden');
-                chartsWrapper.classList.add('hidden'); emptyChartsState.classList.remove('hidden');
-            }
-        }
-
-        function processStats(name, groups, color, rawData, dsId) {
-            let cf=0;
-            const gStats = groups.map((g, idx) => {
-                let freq = 0;
-                if(rawData) freq = (idx===groups.length-1) ? rawData.filter(x=>x>=g.lower && x<=g.upper+0.0001).length : rawData.filter(x=>x>=g.lower && x<g.upper).length;
-                else freq = manualRows[idx].freqs[dsId] || 0;
-                cf += freq;
-                return {...g, freq, cf};
-            });
-            const N = cf;
-            if(N===0) return {name, color, gStats, rawData: rawData||[], s:{N:0}};
-            
-            const mean = gStats.reduce((s,g)=>s+g.freq*g.midpoint,0)/N;
-            const variance = gStats.reduce((s,g)=>s+g.freq*Math.pow(g.midpoint-mean,2),0)/N;
-            const sd = Math.sqrt(variance);
-            const cv = mean!==0 ? (sd/Math.abs(mean))*100 : 0;
-            
-            let trueMean=null, absErr=null, relErr=null, outliers=[], range=0;
-            if(rawData) {
-                trueMean = rawData.reduce((a,b)=>a+b,0)/N; absErr = Math.abs(trueMean-mean); relErr = trueMean!==0 ? (absErr/Math.abs(trueMean))*100 : 0;
-                range = rawData[rawData.length-1] - rawData[0];
-            } else {
-                const ag = gStats.filter(g=>g.freq>0);
-                if(ag.length) range = ag[ag.length-1].upper - ag[0].lower;
-            }
-
-            const getQ = (t) => {
-                const g = gStats.find(x=>x.cf>=t);
-                if(!g) return {val:gStats[gStats.length-1].upper, grp:'>Max'};
-                const prev = gStats[g.id-2]?gStats[g.id-2].cf:0;
-                return {val: g.lower + ((t-prev)/g.freq)*(g.upper-g.lower), grp:`[${fmt(g.lower)};${fmt(g.upper)})`};
-            };
-            const q1 = getQ(N/4), q2=getQ(N/2), q3=getQ(3*N/4);
-            const iqr = q3.val - q1.val;
-
-            let maxF=-1, mG=null; gStats.forEach(g=>{if(g.freq>maxF){maxF=g.freq; mG=g;}});
-            let mode = 0;
-            if(mG) {
-                const i=gStats.indexOf(mG), p=(i>0?gStats[i-1].freq:0), n=(i<gStats.length-1?gStats[i+1].freq:0);
-                mode = mG.lower + ((mG.freq-p)/((mG.freq-p)+(mG.freq-n)))*(mG.upper-mG.lower);
-            }
-
-            if(rawData) {
-                const lf=q1.val-1.5*iqr, uf=q3.val+1.5*iqr;
-                outliers=rawData.filter(x=>x<lf||x>uf);
-            }
-
-            return { name, color, gStats, rawData: rawData || generateSimulatedData(gStats), s: {
-                N, mean, trueMean, absErr, relErr, variance, sd, cv, range,
-                q1:q1.val, q2:q2.val, q3:q3.val, iqr, mode, q1Loc:q1.grp, q2Loc:q2.grp, q3Loc:q3.grp,
-                outliers, disp: cv<10?"Thấp":cv<30?"TB":"Cao"
-            }};
-        }
-
-        function generateSimulatedData(gStats) {
-            let data = [];
-            gStats.forEach(g => {
-                for(let i=0; i<g.freq; i++) {
-                    const jitter = (Math.random() - 0.5) * (g.upper - g.lower) * 0.8;
-                    data.push(g.midpoint + jitter);
-                }
-            });
-            return data.sort((a,b)=>a-b);
-        }
-
-        function renderTables(groups, results) {
-            const m = [
-                {id:'N', l:'Tổng số (N)'}, {id:'trueMean', l:'Số đúng (x̄ gốc)', raw:1}, {id:'mean', l:'Số gần đúng (x̄ nhóm)'},
-                {id:'absErr', l:'Sai số tuyệt đối', raw:1}, {id:'relErr', l:'Sai số tương đối (%)', raw:1},
-                {id:'q2', l:'Trung vị (Me)'}, {id:'q1', l:'Q1'}, {id:'q3', l:'Q3'}, {id:'mode', l:'Mốt (Mo)'},
-                {id:'range', l:'Khoảng biến thiên (R)'}, {id:'iqr', l:'IQR'}, {id:'variance', l:'Phương sai (s²)'},
-                {id:'sd', l:'Độ lệch chuẩn (s)'}, {id:'cv', l:'CV (%)'}, {id:'disp', l:'Mức độ phân tán', txt:1},
-                {id:'outliers', l:'Ngoại lai (sl)', raw:1, len:1},
-                {id:'q1Loc', l:'Vị trí Q1', txt:1}, {id:'q2Loc', l:'Vị trí Me', txt:1}, {id:'q3Loc', l:'Vị trí Q3', txt:1}
-            ];
-            let h = `<thead><tr class="bg-indigo-50 border-b"><th class="px-4 py-2">Chỉ số</th>`+results.map(r=>`<th class="px-4 py-2 text-center" style="color:${r.color.border}">${r.name}</th>`).join('')+`</tr></thead><tbody>`;
-            m.forEach(x => {
-                h += `<tr class="border-b last:border-0 hover:bg-slate-50"><td class="px-4 py-2 font-medium text-slate-600">${x.l}</td>` + results.map(r=>{
-                    let v = r.s[x.id];
-                    if(x.raw && mode==='table') return `<td class="text-center text-slate-300 italic">N/A</td>`;
-                    if(v===undefined) return `<td>-</td>`;
-                    if(x.len) return `<td class="text-center font-bold text-red-600">${v.length}</td>`;
-                    if(x.txt) return `<td class="text-center text-slate-700">${v}</td>`;
-                    return `<td class="text-center font-bold text-slate-700">${fmt(v)}</td>`;
-                }).join('') + `</tr>`;
-            });
-            document.getElementById('statsTable').innerHTML = h+`</tbody>`;
-
-            let fh = `<thead><tr class="bg-indigo-50 border-b"><th class="px-4 py-2">Nhóm</th><th class="px-4 py-2 text-center">c_i</th>`+results.map(r=>`<th class="px-4 py-2 text-center" style="color:${r.color.border}">f (${r.name})</th>`).join('')+`</tr></thead><tbody>`;
-            groups.forEach((g,i)=>{
-                fh += `<tr class="border-b hover:bg-slate-50"><td class="px-4 py-2 text-slate-800">[${fmt(g.lower)}; ${fmt(g.upper)})</td><td class="px-4 py-2 text-center text-slate-500">${fmt(g.midpoint)}</td>`+results.map(r=>`<td class="px-4 py-2 text-center font-bold">${r.gStats[i].freq}</td>`).join('')+`</tr>`;
-            });
-            document.getElementById('freqTable').innerHTML = fh+`</tbody>`;
-        }
-
-        let charts = {};
-        function updateAllCharts(groups, results) {
-            const l = groups.map(g=>`[${fmt(g.lower)}; ${fmt(g.upper)})`);
-            const ol = [fmt(groups[0].lower), ...groups.map(g=>fmt(g.upper))]; 
-            const ds = (fn, type, fill) => results.map(r=>({
-                label: r.name, data: fn(r), backgroundColor: r.color.bg, borderColor: r.color.border, 
-                borderWidth: 1.5, tension: 0.3, fill: fill
-            }));
-
-            draw('chartHistogram', 'bar', l, ds(r=>r.gStats.map(g=>g.freq), 'bar', false), {scales:{x:{stacked:false},y:{beginAtZero:true}}});
-            draw('chartPolygon', 'line', groups.map(g=>fmt(g.midpoint)), ds(r=>r.gStats.map(g=>g.freq), 'line', false), {elements:{line:{tension:0}}});
-            draw('chartStacked', 'bar', l, ds(r=>r.gStats.map(g=>g.freq), 'bar', false), {scales:{x:{stacked:true},y:{stacked:true}}});
-            draw('chartRelFreq', 'bar', l, ds(r=>r.gStats.map(g=>(g.freq/r.s.N)*100), 'bar', false), {scales:{y:{beginAtZero:true, title:{display:true,text:'%'}}}});
-            draw('chartArea', 'line', l, ds(r=>r.gStats.map(g=>g.freq), 'line', true), {scales:{y:{stacked:true, beginAtZero:true}}, elements:{line:{tension:0.4}}});
-            draw('chartOgive', 'line', ol, ds(r=>[0, ...r.gStats.map(g=>g.cf)], 'line', false), {elements:{line:{tension:0.2}}});
-            updatePieChart();
-
-            const boxData = results.map(r => ({ label: r.name, backgroundColor: r.color.bg, borderColor: r.color.border, borderWidth: 1, outlierColor: '#ef4444', padding: 10, itemRadius: 0, data: [r.rawData] }));
-            draw('chartBox', 'boxplot', ['Phân bố'], boxData, {});
-
-            const violinData = results.map(r => ({ label: r.name, backgroundColor: r.color.bg, borderColor: r.color.border, borderWidth: 1, data: [r.rawData] }));
-            draw('chartViolin', 'violin', ['Mật độ'], violinData, {});
-
-            const scatterData = results.map(r => ({ label: r.name, backgroundColor: r.color.border, data: r.rawData.map((val, idx) => ({ x: val, y: Math.random() * 0.5 + results.indexOf(r) })) }));
-            draw('chartScatter', 'scatter', null, scatterData, { scales: { x: { type: 'linear', position: 'bottom', title: {display:true, text:'Giá trị'} }, y: { display: false } } });
-        }
-
-        function updatePieChart() {
-            const dsId = parseInt(document.getElementById('pieDatasetSelect').value) || (datasets[0]?datasets[0].id:0);
-            const dataset = datasets.find(d => d.id === dsId);
-            if(!dataset || !lastGroups.length) return;
-            let gStats = [];
-            if(mode==='raw') {
-                const data = dataset.dataStr.split(/[\s,;]+/).map(x=>parseFloat(x)).filter(n=>!isNaN(n));
-                gStats = lastGroups.map(g => ({...g, freq: data.filter(x=>x>=g.lower && x<g.upper).length}));
-            } else {
-                gStats = lastGroups.map((g,i) => ({...g, freq: manualRows[i].freqs[dsId]||0}));
-            }
-            const data = { labels: lastGroups.map(g => `[${fmt(g.lower)}; ${fmt(g.upper)})`), datasets: [{ data: gStats.map(g => g.freq), backgroundColor: ['#60a5fa','#f87171','#34d399','#fbbf24','#a78bfa','#f472b6','#9ca3af'] }] };
-            draw('chartPie', 'doughnut', data.labels, data.datasets, {});
-        }
-
-        function draw(id, type, l, d, opt) {
-            const ctx = document.getElementById(id).getContext('2d');
-            if(charts[id]) charts[id].destroy();
-            charts[id] = new Chart(ctx, {type, data:{labels:l, datasets:d}, options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, ...opt}});
-        }
-
-        // --- Download Functions ---
-        function downloadTableImage(tableId, baseName, format) {
-            const element = document.getElementById(tableId);
-            const randomId = generateRandomFilename();
-            const fileName = `${randomId}.${format}`;
-
-            html2canvas(element, { scale: 2, backgroundColor: '#ffffff' }).then(canvas => {
-                const link = document.createElement('a');
-                link.href = canvas.toDataURL(`image/${format}`);
-                link.download = fileName;
-                link.click();
-            });
-        }
-
-        function downloadChartImage(chartId, baseName, format) {
-            const chart = charts[chartId];
-            if (!chart) {
-                alert('Biểu đồ chưa được tạo. Vui lòng nhập dữ liệu.');
-                return;
-            }
-            
-            const randomId = generateRandomFilename();
-            const fileName = `${randomId}.${format}`;
-
-            const canvas = chart.canvas;
-            const link = document.createElement('a');
-            link.href = chart.toBase64Image(`image/${format}`); // Sử dụng hàm của Chart.js để lấy base64 image
-            link.download = fileName;
-            link.click();
-        }
-
-        function fmt(n) { const d=parseInt(document.getElementById('decimalPlaces').value)||2; return (n===undefined||n===null)?"-":new Intl.NumberFormat('vi-VN',{minimumFractionDigits:d,maximumFractionDigits:d}).format(n); }
-        function toggleInputs() { const m=document.getElementById('method').value; document.getElementById('inputH').classList.toggle('hidden', m!=='manual_width'); document.getElementById('inputK').classList.toggle('hidden', m!=='manual_count'); }
-        function copyTable() { 
-            const el = document.getElementById('freqTable'); let range, sel;
-            if (document.createRange && window.getSelection) { range = document.createRange(); sel = window.getSelection(); sel.removeAllRanges(); try { range.selectNodeContents(el); sel.addRange(range); } catch (e) { range.selectNode(el); sel.addRange(range); } document.execCommand("copy"); sel.removeAllRanges(); alert("Đã sao chép!"); }
-        }
-
-        // --- Sharing Feature ---
-        function shareLink() {
-            const state = {
-                m: mode,
-                ds: datasets.map(d => ({ n: d.name, s: d.dataStr })),
-                mr: manualRows.map(r => ({ l: r.lower, u: r.upper, f: r.freqs })),
-                dp: document.getElementById('decimalPlaces').value,
-                meth: document.getElementById('method').value,
-                h: document.getElementById('manualH').value,
-                k: document.getElementById('manualK').value,
-                sv: document.getElementById('startValue').value
-            };
-            const json = JSON.stringify(state);
-            const base64 = btoa(unescape(encodeURIComponent(json)));
-            const url = new URL(window.location.href);
-            url.searchParams.set('share', base64);
-            
-            navigator.clipboard.writeText(url.toString()).then(() => {
-                alert("Link chia sẻ đã được sao chép vào bộ nhớ tạm!");
-            }).catch(err => {
-                console.error('Could not copy text: ', err);
-                prompt("Sao chép link chia sẻ tại đây:", url.toString());
-            });
-        }
-
-        function loadSharedData() {
-            const params = new URLSearchParams(window.location.search);
-            const sharedData = params.get('share');
-            if (!sharedData) return;
-
-            try {
-                const json = decodeURIComponent(escape(atob(sharedData)));
-                const state = JSON.parse(json);
-                
-                if (state.m) mode = state.m;
-                if (state.ds) datasets = state.ds.map((d, i) => ({ id: i + 1, name: d.n, dataStr: d.s }));
-                if (state.mr) manualRows = state.mr.map((r, i) => ({ id: Date.now() + i, lower: r.l, upper: r.u, freqs: r.f }));
-                
-                if (state.dp) document.getElementById('decimalPlaces').value = state.dp;
-                if (state.meth) document.getElementById('method').value = state.meth;
-                if (state.h) document.getElementById('manualH').value = state.h;
-                if (state.k) document.getElementById('manualK').value = state.k;
-                if (state.sv) document.getElementById('startValue').value = state.sv;
-
-                toggleInputs();
-                if (mode === 'table') {
-                    document.getElementById('btnRaw').className = "flex-1 py-2 text-sm font-medium rounded text-slate-500 hover:bg-slate-50";
-                    document.getElementById('btnTable').className = "flex-1 py-2 text-sm font-medium rounded bg-indigo-50 text-indigo-700";
-                    document.getElementById('rawSection').classList.add('hidden');
-                    document.getElementById('tableSection').classList.remove('hidden');
-                }
-            } catch (e) {
-                console.error("Error loading shared data:", e);
-            }
-        }
-
-        // --- Home Navigation ---
-        function goHome() {
-            // Chuyển về tab "Dữ liệu & Thống kê"
-            switchTab('data');
-            // Cuộn lên đầu trang
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-
-        window.onload = () => { 
-            loadSharedData();
-            renderInputs(); 
-            calculate(); 
-        };
-    if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-            navigator.serviceWorker.register('service-worker.js')
-                .then(() => console.log('SW registered'))
-                .catch(err => console.warn('SW reg failed', err));
+            if (el.id === 'toggle-sort-text' && isSortMode) return;
+            el.textContent = t(el.dataset.t);
+        });
+        document.querySelectorAll('[data-t-placeholder]').forEach(el => {
+            el.placeholder = t(el.dataset.tPlaceholder);
         });
     }
-    </script>
+
+    function adjustColor(color, amount) {
+        return '#' + color.replace(/^#/, '').replace(/../g, color => ('0' + Math.min(255, Math.max(0, parseInt(color, 16) + amount)).toString(16)).substr(-2));
+    }
+
+    function updateColor(type, newColor) {
+        if (!/^#([0-9A-Fa-f]{3}){1,2}$/.test(newColor)) { return; }
+        
+        if (type === 'bg') {
+            appTheme.background = newColor;
+            const r = parseInt(newColor.substr(1, 2), 16);
+            const g = parseInt(newColor.substr(3, 2), 16);
+            const b = parseInt(newColor.substr(5, 2), 16);
+            const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+            
+            if (brightness > 128) {
+                 appTheme.card = adjustColor(newColor, -15); 
+                 appTheme.border = adjustColor(newColor, -30);
+            } else {
+                 appTheme.card = adjustColor(newColor, 20);
+                 appTheme.border = adjustColor(newColor, 30);
+            }
+            
+            bgColorPreview.style.backgroundColor = newColor;
+            bgHexInput.value = newColor;
+        } else if (type === 'text') {
+            appTheme.text = newColor;
+            const r = parseInt(newColor.substr(1, 2), 16), g = parseInt(newColor.substr(3, 2), 16), b = parseInt(newColor.substr(5, 2), 16);
+            const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+            appTheme.secondary = brightness > 128 ? '#6B7280' : '#9CA3AF';
+            textColorPreview.style.backgroundColor = newColor;
+            textHexInput.value = newColor;
+        }
+        
+        applyTheme();
+        renderLanguagePicker();
+        
+        document.body.style.display = 'none';
+        document.body.offsetHeight; // Trigger reflow
+        document.body.style.display = '';
+    }
+
+    function applyTheme() {
+        const root = document.documentElement;
+        root.style.setProperty('--color-background', appTheme.background);
+        root.style.setProperty('--color-text', appTheme.text);
+        root.style.setProperty('--color-secondary', appTheme.secondary);
+        root.style.setProperty('--color-card', appTheme.card);
+        root.style.setProperty('--color-border', appTheme.border);
+        root.style.setProperty('--color-present-bg', appTheme.text); 
+        root.style.setProperty('--color-present-text', appTheme.background);
+        localStorage.setItem('appTheme', JSON.stringify(appTheme));
+    }
+
+    function loadDataFromStorage() {
+        appLanguage = localStorage.getItem('appLanguage') || 'vi';
+        const storedTheme = localStorage.getItem('appTheme');
+        if (storedTheme) appTheme = JSON.parse(storedTheme);
+        const storedLists = localStorage.getItem('attendanceLists');
+        if (storedLists) allLists = JSON.parse(storedLists);
+        const storedProfile = localStorage.getItem('userProfile');
+        if (storedProfile) {
+            userProfile = JSON.parse(storedProfile);
+            if (!userProfile.avatar) userProfile.avatar = 'https://placehold.co/100x100/E2E8F0/4A5568?text=User';
+        }
+        const storedStates = localStorage.getItem('attendanceState');
+        if (storedStates) {
+            allAttendanceStates = JSON.parse(storedStates);
+            Object.keys(allAttendanceStates).forEach(listId => {
+                const state = allAttendanceStates[listId];
+                if (Array.isArray(state) && state.length > 0 && typeof state[0] === 'string') {
+                    allAttendanceStates[listId] = state.map(name => ({
+                        name: name,
+                        present: true,
+                        timestamp: null
+                    }));
+                }
+            });
+        }
+        applyTheme();
+        updateUIStrings();
+    }
+
+    // 3. UI LOGIC FUNCTIONS
+    function showPage(pageId, isBack = false) {
+        const currentPageId = pageHistory[pageHistory.length - 1];
+        if (currentPageId === pageId && document.querySelector('.page-content.active')) return;
+
+        const pages = document.querySelectorAll('.page-content');
+        const newPage = document.getElementById(pageId);
+        const oldPage = document.getElementById(currentPageId);
+        
+        let direction = 'right'; 
+        if (isBack) {
+            direction = 'left'; 
+        } else if (tabOrder.includes(currentPageId) && tabOrder.includes(pageId)) {
+            const oldIndex = tabOrder.indexOf(currentPageId);
+            const newIndex = tabOrder.indexOf(pageId);
+            if (newIndex < oldIndex) direction = 'left';
+        }
+
+        pages.forEach(p => {
+            p.classList.remove('active', 'page-enter-right', 'page-enter-left', 'page-exit-left', 'page-exit-right');
+        });
+        
+        if (oldPage && oldPage !== newPage) {
+            oldPage.classList.add('active'); 
+            if (direction === 'right') {
+                oldPage.classList.add('page-exit-left');
+                newPage.classList.add('page-enter-right');
+            } else {
+                oldPage.classList.add('page-exit-right');
+                newPage.classList.add('page-enter-left');
+            }
+            void newPage.offsetWidth; 
+            newPage.classList.add('active');
+            setTimeout(() => {
+                oldPage.classList.remove('active', 'page-exit-left', 'page-exit-right');
+                newPage.classList.remove('page-enter-right', 'page-enter-left');
+            }, 300);
+        } else {
+            newPage.classList.add('active');
+        }
+
+        if (!isBack) {
+            if (pageHistory[pageHistory.length - 1] !== pageId) {
+                 if (tabOrder.includes(pageId) && tabOrder.includes(currentPageId)) {
+                    pageHistory[pageHistory.length - 1] = pageId;
+                 } else {
+                    pageHistory.push(pageId);
+                 }
+            }
+        } else {
+             pageHistory.pop();
+        }
+
+        const isMainTabPage = ['page-home', 'page-profile', 'page-settings'].includes(pageId);
+        const showFab = ['page-home', 'page-profile'].includes(pageId);
+        fab.classList.toggle('hidden', !showFab);
+        
+        document.getElementById('tab-bar').classList.toggle('hidden', !isMainTabPage);
+        if (isMainTabPage) {
+            tabItems.forEach(item => {
+                item.classList.toggle('active', item.dataset.page === pageId.replace('page-', ''));
+            });
+        }
+        
+        if (isSortMode && pageId !== 'page-home') {
+            toggleSortMode();
+        }
+
+        if (pageId === 'page-home') renderLists();
+        if (pageId === 'page-profile') renderProfile();
+        if (pageId === 'page-settings') renderSettings();
+    }
+
+    function showModal(titleKey, messageKey, onConfirm) {
+        alertTitle.textContent = t(titleKey);
+        alertMessage.textContent = t(messageKey);
+        modalConfirmCallback = onConfirm;
+        alertModal.classList.remove('hidden');
+        setTimeout(() => alertModal.classList.add('modal-visible', 'opacity-100'), 10);
+    }
+    
+    function hideModal() {
+        alertModal.classList.remove('modal-visible', 'opacity-100');
+        setTimeout(() => alertModal.classList.add('hidden'), 300);
+        modalConfirmCallback = null;
+    }
+
+    function showAttendanceLogModal() {
+        renderAttendanceLogModal();
+        attendanceLogModal.classList.remove('hidden');
+        setTimeout(() => attendanceLogModal.classList.add('modal-visible', 'opacity-100'), 10);
+    }
+    
+    function hideAttendanceLogModal() {
+        attendanceLogModal.classList.remove('modal-visible', 'opacity-100');
+        setTimeout(() => attendanceLogModal.classList.add('hidden'), 300);
+    }
+
+    // AI REPORT FUNCTIONS
+    function showAiReportModal() {
+        aiReportModal.classList.remove('hidden');
+        setTimeout(() => aiReportModal.classList.add('modal-visible', 'opacity-100'), 10);
+        
+        // Auto start generation
+        generateAiReport();
+    }
+
+    function hideAiReportModal() {
+        aiReportModal.classList.remove('modal-visible', 'opacity-100');
+        setTimeout(() => aiReportModal.classList.add('hidden'), 300);
+    }
+
+    async function generateAiReport() {
+        // Reset UI
+        aiReportContent.innerHTML = '';
+        aiLoading.classList.remove('hidden');
+        
+        const listName = attendanceListName.textContent;
+        const presentCount = activeAttendanceList.filter(m => m.present).length;
+        const absentCount = activeAttendanceList.filter(m => !m.present).length;
+        const absentList = activeAttendanceList.filter(m => !m.present).map(m => m.name).join(', ');
+
+        if (!GEMINI_API_KEY) {
+            aiLoading.classList.add('hidden');
+            aiReportContent.textContent = "Vui lòng nhập API Key trong mã nguồn để sử dụng tính năng này.";
+            return;
+        }
+
+        const prompt = `Bạn là trợ lý lớp học. Lớp '${listName}' có ${presentCount} có mặt, ${absentCount} vắng (${absentList || 'Không có'}). 
+        1. Tóm tắt tình hình.
+        2. Soạn tin nhắn nhắc nhở nhẹ nhàng gửi nhóm chat (nếu có người vắng).
+        3. Tặng một câu danh ngôn động lực.
+        Trả lời ngắn gọn, thân thiện bằng tiếng Việt.`;
+
+        try {
+            const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${GEMINI_API_KEY}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }]
+                })
+            });
+
+            const data = await response.json();
+            const text = data.candidates?.[0]?.content?.parts?.[0]?.text || "Không thể tạo báo cáo.";
+            
+            aiLoading.classList.add('hidden');
+            aiReportContent.textContent = text;
+        } catch (error) {
+            aiLoading.classList.add('hidden');
+            aiReportContent.textContent = "Lỗi kết nối AI. Vui lòng thử lại sau.";
+            console.error(error);
+        }
+    }
+
+    function renderColorPalettes() {
+        bgPaletteContainer.innerHTML = '';
+        textPaletteContainer.innerHTML = '';
+        PRESET_COLORS.forEach(color => {
+            const bgSwatch = document.createElement('div');
+            bgSwatch.className = 'color-swatch';
+            bgSwatch.style.backgroundColor = color;
+            bgSwatch.onclick = () => updateColor('bg', color);
+            bgPaletteContainer.appendChild(bgSwatch);
+            const textSwatch = document.createElement('div');
+            textSwatch.className = 'color-swatch';
+            textSwatch.style.backgroundColor = color;
+            textSwatch.onclick = () => updateColor('text', color);
+            textPaletteContainer.appendChild(textSwatch);
+        });
+    }
+
+    function setupColorPickers() {
+        renderColorPalettes();
+        bgPaletteContainer.style.display = 'grid';
+        bgHexContainer.style.display = 'none';
+        textPaletteContainer.style.display = 'grid';
+        textHexContainer.style.display = 'none';
+        colorToggleButtons.forEach(button => {
+            button.onclick = () => {
+                const type = button.dataset.type, mode = button.dataset.mode;
+                button.parentElement.querySelectorAll('.color-toggle-btn').forEach(btn => btn.classList.remove('active'));
+                button.classList.add('active');
+                if (type === 'bg') {
+                    bgPaletteContainer.style.display = (mode === 'palette') ? 'grid' : 'none';
+                    bgHexContainer.style.display = (mode === 'hex') ? 'block' : 'none';
+                } else if (type === 'text') {
+                    textPaletteContainer.style.display = (mode === 'palette') ? 'grid' : 'none';
+                    textHexContainer.style.display = (mode === 'hex') ? 'block' : 'none';
+                }
+            };
+        });
+        bgHexInput.oninput = (e) => updateColor('bg', e.target.value);
+        textHexInput.oninput = (e) => updateColor('text', e.target.value);
+        bgColorPreview.style.backgroundColor = appTheme.background;
+        bgHexInput.value = appTheme.background;
+        textColorPreview.style.backgroundColor = appTheme.text;
+        textHexInput.value = appTheme.text;
+    }
+
+    function changeLanguage(langCode) {
+        appLanguage = langCode;
+        localStorage.setItem('appLanguage', appLanguage);
+        updateUIStrings();
+        renderLanguagePicker();
+    }
+    
+    function renderLanguagePicker() {
+        const container = document.getElementById('language-picker');
+        container.className = 'relative w-full';
+        container.innerHTML = '';
+        const currentLang = languages.find(l => l.code === appLanguage) || languages[0];
+        const button = document.createElement('button');
+        button.className = 'w-full p-3 rounded-lg border flex justify-between items-center transition-colors duration-200';
+        button.style.backgroundColor = 'var(--color-background)'; 
+        button.style.borderColor = 'var(--color-border)';
+        button.style.color = 'var(--color-text)';
+        button.innerHTML = `<span class="font-medium">${currentLang.name}</span><svg class="w-5 h-5 transition-transform duration-200" style="transform: rotate(-90deg)"><use xlink:href="#icon-chevron-left"></use></svg>`;
+        const list = document.createElement('div');
+        list.className = 'absolute top-full left-0 w-full mt-2 rounded-lg shadow-xl border hidden z-50 overflow-hidden';
+        list.style.backgroundColor = 'var(--color-background)'; 
+        list.style.borderColor = 'var(--color-border)';
+        list.style.maxHeight = '300px';
+        list.style.overflowY = 'auto';
+        languages.forEach(lang => {
+            const item = document.createElement('div');
+            item.className = 'p-3 cursor-pointer flex items-center justify-between transition-colors border-b last:border-0';
+            item.style.borderColor = 'var(--color-border)';
+            item.style.color = 'var(--color-text)';
+            item.onmouseover = () => { if (lang.code !== appLanguage) item.style.backgroundColor = 'var(--color-card)'; };
+            item.onmouseout = () => { if (lang.code !== appLanguage) item.style.backgroundColor = 'transparent'; };
+            if (lang.code === appLanguage) {
+                item.style.backgroundColor = 'var(--color-card)'; 
+                item.className += ' font-bold';
+                item.innerHTML = `<span>${lang.name}</span><svg class="w-4 h-4 text-green-600"><use xlink:href="#icon-check"></use></svg>`;
+            } else {
+                item.textContent = lang.name;
+            }
+            item.onclick = () => { changeLanguage(lang.code); };
+            list.appendChild(item);
+        });
+        button.onclick = (e) => {
+            e.stopPropagation();
+            const isHidden = list.classList.contains('hidden');
+            if (isHidden) {
+                list.classList.remove('hidden');
+                button.querySelector('svg').style.transform = 'rotate(90deg)';
+            } else {
+                list.classList.add('hidden');
+                button.querySelector('svg').style.transform = 'rotate(-90deg)';
+            }
+        };
+        container.appendChild(button);
+        container.appendChild(list);
+    }
+    
+    function saveAllLists() { localStorage.setItem('attendanceLists', JSON.stringify(allLists)); }
+    function saveProfile() { localStorage.setItem('userProfile', JSON.stringify(userProfile)); }
+    function saveAttendanceState() {
+        if (!currentListId) return;
+        allAttendanceStates[currentListId] = activeAttendanceList.map(member => ({ ...member }));
+        localStorage.setItem('attendanceState', JSON.stringify(allAttendanceStates));
+    }
+
+    function renderLists() {
+        const searchTerm = searchInput.value.toLowerCase().trim();
+        const filteredLists = allLists.filter(list =>
+            list.name.toLowerCase().includes(searchTerm)
+        );
+        listsContainer.innerHTML = ''; 
+        if (filteredLists.length === 0) {
+            if (allLists.length === 0) {
+                // Hiển thị ngay lập tức
+                const emptyP = document.createElement('p');
+                emptyP.id = 'empty-list-text';
+                emptyP.className = 'text-center text-lg mt-10';
+                emptyP.dataset.t = 'emptyList';
+                emptyP.textContent = t('emptyList');
+                listsContainer.appendChild(emptyP);
+            } else {
+                 const noResP = document.createElement('p');
+                noResP.className = 'text-center text-lg mt-10';
+                noResP.textContent = t('noResults');
+                listsContainer.appendChild(noResP);
+            }
+            return;
+        }
+        
+        filteredLists.forEach(list => {
+            const card = document.createElement('div');
+            card.className = `card rounded-lg p-4 flex justify-between items-center cursor-default transition-all duration-200 hover:shadow-lg border-2 border-transparent sortable-item relative ${isSortMode ? 'edit-mode' : ''}`;
+            card.setAttribute('data-id', list.id); 
+            card.onmouseover = () => { card.style.borderColor = 'var(--color-text)'; };
+            card.onmouseout = () => { card.style.borderColor = 'transparent'; };
+            card.innerHTML = `
+                <div class="flex-1 cursor-pointer" onclick="handleListClick('${list.id}')">
+                    <p class="card-title text-lg font-semibold">${list.name}</p>
+                    <p class="card-subtitle text-sm">${list.members.length} ${t('membersCount')}</p>
+                </div>
+                <div class="flex space-x-1 items-center">
+                    <button class="p-2 action-btn" data-action="delete" data-id="${list.id}" onclick="handleDeleteClick(event, '${list.id}')">
+                        <svg class="w-5 h-5 pointer-events-none" style="color: var(--color-text)"><use xlink:href="#icon-trash"></use></svg>
+                    </button>
+                    <button class="p-2 action-btn" data-action="edit" data-id="${list.id}" onclick="handleEditClick(event, '${list.id}')">
+                        <svg class="w-5 h-5 pointer-events-none" style="color: var(--color-text)"><use xlink:href="#icon-edit"></use></svg>
+                    </button>
+                    <div class="drag-handle p-2 cursor-grab">
+                        <svg class="w-6 h-6" style="color: var(--color-text)"><use xlink:href="#icon-grip"></use></svg>
+                    </div>
+                </div>
+            `;
+            listsContainer.appendChild(card);
+        });
+        if (window.sortableInstance) window.sortableInstance.destroy();
+        if (isSortMode) {
+            window.sortableInstance = new Sortable(listsContainer, {
+                animation: 150,
+                handle: '.drag-handle', 
+                ghostClass: 'sortable-ghost',
+                dragClass: 'sortable-drag',
+                delay: 0, 
+                touchStartThreshold: 3, 
+                onEnd: function (evt) {
+                    const newOrderIds = Array.from(listsContainer.children).map(child => child.getAttribute('data-id'));
+                    const reorderedLists = newOrderIds.map(id => allLists.find(l => l.id === id));
+                    allLists = reorderedLists;
+                    saveAllLists();
+                },
+            });
+        }
+    }
+
+    function toggleSortMode() {
+        isSortMode = !isSortMode;
+        renderLists(); 
+        toggleSortBtn.innerHTML = isSortMode 
+            ? `<span id="toggle-sort-text" class="text-sm font-bold px-2">${t('done')}</span>`
+            : `<svg class="w-6 h-6"><use xlink:href="#icon-sort"></use></svg>`;
+    }
+
+    window.handleListClick = function(listId) {
+        if (isSortMode) return; 
+        startAttendance(listId, 'page-home');
+    };
+    window.handleDeleteClick = function(e, listId) {
+        e.stopPropagation();
+        promptDelete(listId);
+    };
+    window.handleEditClick = function(e, listId) {
+        e.stopPropagation();
+        showForm(listId);
+    };
+
+    function promptDelete(listId) {
+        showModal('confirmDelete', 'confirmDeleteMessage', () => {
+            allLists = allLists.filter(l => l.id !== listId);
+            saveAllLists();
+            delete allAttendanceStates[listId];
+            localStorage.setItem('attendanceState', JSON.stringify(allAttendanceStates));
+            renderLists();
+            hideModal();
+        });
+    }
+
+    function showForm(listId = null, fromPage = 'page-home') {
+        editingListId = listId;
+        previousPageForForm = fromPage;
+        formError.classList.add('hidden');
+        if (listId) {
+            const list = allLists.find(l => l.id === listId);
+            formTitle.textContent = t('editList');
+            formListName.value = list.name;
+            formMembers.value = list.members.join('\n');
+        } else {
+            formTitle.textContent = t('createList');
+            formListName.value = '';
+            formMembers.value = '';
+        }
+        showPage('page-form');
+    }
+
+    function handleSave() {
+        const listName = formListName.value.trim();
+        const members = formMembers.value.split('\n').filter(name => name.trim() !== '');
+        if (!listName || members.length === 0) {
+            formError.textContent = t('fillAllFields');
+            formError.classList.remove('hidden');
+            return;
+        }
+        if (editingListId) {
+            const listIndex = allLists.findIndex(l => l.id === editingListId);
+            allLists[listIndex].name = listName;
+            allLists[listIndex].members = members;
+        } else {
+            const newList = { id: Date.now().toString(), name: listName, members: members };
+            allLists.push(newList);
+        }
+        saveAllLists();
+        showPage(previousPageForForm);
+        editingListId = null;
+    }
+
+    function renderProfile() {
+        profileAvatarImg.src = userProfile.avatar;
+        profileNameInput.value = userProfile.name;
+        profileNotesInput.value = userProfile.notes;
+        profileListsDirectory.innerHTML = '';
+        if (allLists.length === 0) {
+            profileListsDirectory.innerHTML = `<p class="card-subtitle text-center">${t('emptyList')}</p>`;
+            return;
+        }
+        allLists.forEach(list => {
+            const item = document.createElement('button');
+            item.className = 'w-full flex items-center space-x-3 p-3 card rounded-lg';
+            item.innerHTML = `<svg class="w-5 h-5 flex-shrink-0" style="color: var(--color-text)"><use xlink:href="#icon-bookmark"></use></svg><span class="card-title truncate">${list.name}</span>`;
+            item.onclick = () => startAttendance(list.id, 'page-profile');
+            profileListsDirectory.appendChild(item);
+        });
+    }
+
+    function handleAvatarUpload(event) {
+        const file = event.target.files[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const imageDataUrl = e.target.result;
+                profileAvatarImg.src = imageDataUrl;
+                userProfile.avatar = imageDataUrl;
+                saveProfile();
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+
+    function renderSettings() {
+        renderLanguagePicker();
+        bgHexInput.value = appTheme.background;
+        textHexInput.value = appTheme.text;
+        bgColorPreview.style.backgroundColor = appTheme.background;
+        textColorPreview.style.backgroundColor = appTheme.text;
+        updateUIStrings();
+    }
+    
+    // ... startAttendance, renderDynamicGrid, togglePresent ...
+    function startAttendance(listId, fromPage = 'page-home') {
+        previousPageForAttendance = fromPage;
+        const list = allLists.find(l => l.id === listId);
+        if (!list) return;
+        currentListId = listId;
+        const savedState = allAttendanceStates[listId] || [];
+        activeAttendanceList = list.members.map(name => {
+            const savedMember = savedState.find(m => m.name === name.trim());
+            if (savedMember && savedMember.present) {
+                return { name: name.trim(), present: true, timestamp: savedMember.timestamp };
+            } else {
+                return { name: name.trim(), present: false, timestamp: null };
+            }
+        });
+        attendanceListName.textContent = list.name;
+        renderDynamicGrid();
+        showPage('page-attendance');
+    }
+
+    function formatTimeDetailed(timestamp) {
+        if (!timestamp) return '';
+        const date = new Date(timestamp);
+        const hours = date.getHours().toString().padStart(2, '0');
+        const minutes = date.getMinutes().toString().padStart(2, '0');
+        const seconds = date.getSeconds().toString().padStart(2, '0');
+        const day = date.getDate().toString().padStart(2, '0');
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const year = date.getFullYear();
+        return `${hours}:${minutes}:${seconds} ${day}/${month}/${year}`;
+    }
+
+    function renderDynamicGrid() {
+        dynamicGrid.innerHTML = ''; 
+        if (activeAttendanceList.length === 0) return;
+        activeAttendanceList.forEach((member, i) => {
+            const cell = document.createElement('div');
+            cell.className = `grid-cell ${member.present ? 'grid-cell-present' : 'grid-cell-absent'}`;
+            cell.textContent = member.name;
+            cell.title = member.name;
+            cell.dataset.index = i;
+            cell.onclick = () => togglePresent(i);
+            dynamicGrid.appendChild(cell);
+        });
+    }
+
+    function togglePresent(index) {
+        const member = activeAttendanceList[index];
+        const now = new Date();
+        if (!member.present) {
+            member.present = true;
+            member.timestamp = now.toISOString();
+        } else {
+            member.present = false;
+            member.timestamp = null;
+        }
+        saveAttendanceState();
+        renderDynamicGrid();
+    }
+    
+    function handleResetGrid() {
+        activeAttendanceList = activeAttendanceList.map(member => ({ ...member, present: false, timestamp: null }));
+        saveAttendanceState();
+        renderDynamicGrid();
+    }
+
+    // ... showResultsModal, handleCopyResults ...
+    function showResultsModal() {
+        const absentMembers = activeAttendanceList.filter(member => !member.present).map(member => member.name);
+        const absentCount = absentMembers.length;
+        const presentCount = activeAttendanceList.length - absentCount;
+        currentAbsentList = absentMembers; 
+        resultsList.innerHTML = ''; 
+        resultsSummary.innerHTML = `<span class="font-medium" style="color: var(--color-text)">${t('present')}: </span><span class="font-bold text-green-600">${presentCount}</span><span class="mx-2">|</span><span class="font-medium" style="color: var(--color-text)">${t('absent')}: </span><span class="font-bold text-red-600">${absentCount}</span>`;
+        resultsModalTitle.textContent = t('results');
+        if (absentCount === 0) {
+            const li = document.createElement('li');
+            li.textContent = t('allPresent');
+            li.className = 'all-present';
+            resultsList.appendChild(li);
+        } else {
+            absentMembers.forEach(name => {
+                const li = document.createElement('li');
+                li.textContent = name;
+                resultsList.appendChild(li);
+            });
+        }
+        modalCopySpan.textContent = t('copyResults');
+        resultsModal.classList.remove('hidden');
+        setTimeout(() => resultsModal.classList.add('modal-visible', 'opacity-100'), 10);
+    }
+
+    function hideResultsModal() {
+        resultsModal.classList.remove('modal-visible', 'opacity-100');
+        setTimeout(() => resultsModal.classList.add('hidden'), 300);
+    }
+    
+    function handleCopyResults() {
+        if (currentAbsentList.length === 0) return;
+        const textToCopy = currentAbsentList.join(', ');
+        const tempTextarea = document.createElement('textarea');
+        tempTextarea.value = textToCopy;
+        tempTextarea.style.position = 'fixed';
+        tempTextarea.style.top = '-9999px'; 
+        tempTextarea.style.left = '-9999px';
+        document.body.appendChild(tempTextarea);
+        tempTextarea.select();
+        let successful = false;
+        try { successful = document.execCommand('copy'); }
+        catch (err) { console.error('Lỗi khi thực hiện sao chép:', err); }
+        finally { document.body.removeChild(tempTextarea); }
+        if (successful) {
+            modalCopySpan.textContent = t('copied');
+            setTimeout(() => { modalCopySpan.textContent = t('copyResults'); }, 2000);
+        } else { console.error('Không thể sao chép kết quả.'); }
+    }
+
+    function renderAttendanceLogModal() {
+        attendanceLogContent.innerHTML = '';
+        const sortedMembers = [...activeAttendanceList].sort((a, b) => {
+            if (a.present && !b.present) return -1;
+            if (!a.present && b.present) return 1;
+            if (a.present && b.present) {
+                return new Date(b.timestamp) - new Date(a.timestamp);
+            }
+            return a.name.localeCompare(b.name);
+        });
+        if (sortedMembers.length === 0) {
+            const emptyMessage = document.createElement('div');
+            emptyMessage.className = 'text-center py-8';
+            emptyMessage.style.color = 'var(--color-secondary)';
+            emptyMessage.textContent = t('noAttendanceRecords');
+            attendanceLogContent.appendChild(emptyMessage);
+            return;
+        }
+        sortedMembers.forEach(member => {
+            const logItem = document.createElement('div');
+            logItem.className = 'attendance-log-modal-item';
+            const timeStr = member.present ? formatTimeDetailed(member.timestamp) : '';
+            logItem.innerHTML = `<div class="attendance-log-name">${member.name}</div><div class="attendance-log-time">${timeStr}</div>`;
+            attendanceLogContent.appendChild(logItem);
+        });
+    }
+
+    function exportAttendanceLog() {
+        const presentMembers = activeAttendanceList.filter(member => member.present);
+        if (presentMembers.length === 0) return;
+        const logText = presentMembers
+            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
+            .map(member => {
+                const timeStr = formatTimeDetailed(member.timestamp);
+                return `${member.name} - ${timeStr}`;
+            })
+            .join('\n');
+        const textToCopy = logText;
+        const tempTextarea = document.createElement('textarea');
+        tempTextarea.value = textToCopy;
+        tempTextarea.style.position = 'fixed';
+        tempTextarea.style.top = '-9999px'; 
+        tempTextarea.style.left = '-9999px';
+        document.body.appendChild(tempTextarea);
+        tempTextarea.select();
+        let successful = false;
+        try { successful = document.execCommand('copy'); }
+        catch (err) { console.error('Lỗi sao chép:', err); }
+        finally { document.body.removeChild(tempTextarea); }
+        if (successful) {
+            attendanceLogExportBtn.innerHTML = `<svg class="w-5 h-5"><use xlink:href="#icon-check"></use></svg><span>${t('copied')}</span>`;
+            setTimeout(() => {
+                attendanceLogExportBtn.innerHTML = `<svg class="w-5 h-5"><use xlink:href="#icon-copy"></use></svg><span>${t('exportLog')}</span>`;
+            }, 2000);
+        }
+    }
+
+    function initDraggableFab() {
+        let isDragging = false;
+        let startX, startY;
+        let initialLeft, initialTop;
+        let holdTimer;
+        let isLocked = false; 
+        const HOLD_TIME = 2000; 
+        const defaultBottom = 80;
+        const defaultRight = 16;
+        let lockedLeft = null;
+        let lockedTop = null;
+
+        window.resetFabPosition = () => {
+            lockedLeft = null;
+            lockedTop = null;
+            fab.style.left = 'auto';
+            fab.style.top = 'auto';
+            fab.style.right = `${defaultRight}px`;
+            fab.style.bottom = `${defaultBottom}px`;
+            fab.classList.add('position-locked');
+            setTimeout(() => fab.classList.remove('position-locked'), 500);
+        };
+
+        fab.addEventListener('touchstart', (e) => {
+            isDragging = true;
+            fab.classList.add('dragging');
+            const touch = e.touches[0];
+            startX = touch.clientX;
+            startY = touch.clientY;
+            const rect = fab.getBoundingClientRect();
+            initialLeft = rect.left;
+            initialTop = rect.top;
+            holdTimer = setTimeout(() => {
+                if (isDragging) {
+                    isLocked = true;
+                    fab.classList.add('position-locked');
+                    setTimeout(() => fab.classList.remove('position-locked'), 500);
+                }
+            }, HOLD_TIME);
+        }, { passive: false });
+
+        document.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            e.preventDefault(); 
+            const touch = e.touches[0];
+            const dx = touch.clientX - startX;
+            const dy = touch.clientY - startY;
+            fab.style.left = `${initialLeft + dx}px`;
+            fab.style.top = `${initialTop + dy}px`;
+            fab.style.right = 'auto';
+            fab.style.bottom = 'auto';
+        }, { passive: false });
+
+        const endDrag = () => {
+            if (!isDragging) return;
+            isDragging = false;
+            fab.classList.remove('dragging');
+            clearTimeout(holdTimer);
+            if (isLocked) {
+                const rect = fab.getBoundingClientRect();
+                lockedLeft = rect.left;
+                lockedTop = rect.top;
+                isLocked = false;
+            } else {
+                if (lockedLeft !== null && lockedTop !== null) {
+                    fab.style.left = `${lockedLeft}px`;
+                    fab.style.top = `${lockedTop}px`;
+                } else {
+                    fab.style.left = 'auto';
+                    fab.style.top = 'auto';
+                    fab.style.right = `${defaultRight}px`;
+                    fab.style.bottom = `${defaultBottom}px`;
+                }
+            }
+        };
+
+        fab.addEventListener('touchend', endDrag);
+        fab.addEventListener('touchcancel', endDrag);
+        
+        fab.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            fab.classList.add('dragging');
+            startX = e.clientX;
+            startY = e.clientY;
+            const rect = fab.getBoundingClientRect();
+            initialLeft = rect.left;
+            initialTop = rect.top;
+            holdTimer = setTimeout(() => {
+                if (isDragging) {
+                    isLocked = true;
+                    fab.classList.add('position-locked');
+                    setTimeout(() => fab.classList.remove('position-locked'), 500);
+                }
+            }, HOLD_TIME);
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            e.preventDefault();
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+            fab.style.left = `${initialLeft + dx}px`;
+            fab.style.top = `${initialTop + dy}px`;
+            fab.style.right = 'auto';
+            fab.style.bottom = 'auto';
+        });
+        document.addEventListener('mouseup', endDrag);
+    }
+
+    function initGestures() {
+        let lastTapTime = 0;
+        let tapCount = 0;
+        
+        document.addEventListener('touchend', (e) => {
+            const currentTime = new Date().getTime();
+            const tapLength = currentTime - lastTapTime;
+            
+            if (tapLength < 300 && tapLength > 0) {
+                tapCount++;
+            } else {
+                tapCount = 1;
+            }
+            lastTapTime = currentTime;
+
+            if (tapCount === 3) {
+                const tempBg = appTheme.background;
+                const tempText = appTheme.text;
+                updateColor('bg', tempText);
+                updateColor('text', tempBg);
+                tapCount = 0; 
+            }
+        });
+
+        function startDrawing(e) {
+            if (e.touches && e.touches.length === 1) {
+                if (e.target.id === 'app-shell' || e.target.tagName === 'BODY' || e.target.id === 'main-content') {
+                     isDrawing = true;
+                     points = [];
+                }
+            }
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            const x = e.touches[0].clientX;
+            const y = e.touches[0].clientY;
+            points.push({x, y});
+        }
+
+        function stopDrawing() {
+            if (!isDrawing) return;
+            isDrawing = false;
+            
+            if (points.length > 30 && isCircle(points)) { 
+                if (window.resetFabPosition) window.resetFabPosition();
+                isCircleActionTriggered = true; 
+                setTimeout(() => { isCircleActionTriggered = false; }, 500);
+            }
+        }
+
+        function isCircle(points) {
+            const first = points[0];
+            const last = points[points.length - 1];
+            const distance = Math.hypot(first.x - last.x, first.y - last.y);
+            if (distance > 150) return false;
+            let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+            points.forEach(p => {
+                minX = Math.min(minX, p.x);
+                maxX = Math.max(maxX, p.x);
+                minY = Math.min(minY, p.y);
+                maxY = Math.max(maxY, p.y);
+            });
+            const width = maxX - minX;
+            const height = maxY - minY;
+            if (width < 100 || height < 100) return false;
+            const ratio = width / height;
+            if (ratio < 0.5 || ratio > 1.5) return false;
+            return true;
+        }
+        document.addEventListener('touchstart', startDrawing, {passive: true}); 
+        document.addEventListener('touchmove', draw, {passive: true});
+        document.addEventListener('touchend', stopDrawing);
+    }
+    
+    let touchStartY = 0; 
+    function initSwipeGestures() {
+        document.addEventListener('touchstart', e => {
+            touchStartX = e.changedTouches[0].screenX;
+            touchStartY = e.changedTouches[0].screenY; 
+            isCircleActionTriggered = false; 
+        }, {passive: true});
+
+        document.addEventListener('touchend', e => {
+            if (isCircleActionTriggered) return;
+            touchEndX = e.changedTouches[0].screenX;
+            let touchEndY = e.changedTouches[0].screenY;
+            if (Math.abs(touchEndY - touchStartY) > 60) return;
+            handleSwipe();
+        }, {passive: true});
+    }
+
+    function handleSwipe() {
+        const threshold = 80; 
+        const swipeDistance = touchEndX - touchStartX;
+        let currentPage = '';
+        const pages = document.querySelectorAll('.page-content');
+        pages.forEach(p => {
+            // SỬA: Kiểm tra display thay vì class active để tương thích với cơ chế hiển thị mới
+            if(p.style.display !== 'none' && !p.classList.contains('hidden')) currentPage = p.id;
+        });
+        
+        // Fallback nếu không tìm thấy page
+        if (!currentPage && !document.getElementById('page-home').classList.contains('hidden')) currentPage = 'page-home';
+
+        if (currentPage === 'page-home') {
+            if (swipeDistance < -threshold) showPage('page-profile');
+        } else if (currentPage === 'page-profile') {
+            if (swipeDistance > threshold) showPage('page-home');
+            else if (swipeDistance < -threshold) showPage('page-settings');
+        } else if (currentPage === 'page-settings') {
+            if (swipeDistance > threshold) showPage('page-profile');
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+        loadDataFromStorage();
+        // KHÔNG gọi showPage('page-home') ở đây nữa để tránh xung đột render
+        // Mặc định HTML đã có class active, chỉ cần render data
+        renderLists();
+        
+        setupColorPickers();
+        renderLanguagePicker();
+        initDraggableFab();
+        initGestures();
+        initSwipeGestures();
+
+        document.addEventListener('click', (e) => {
+            const picker = document.getElementById('language-picker');
+            if (picker && !picker.contains(e.target)) {
+                const list = picker.querySelector('div.absolute');
+                const button = picker.querySelector('button');
+                if (list && !list.classList.contains('hidden')) {
+                    list.classList.add('hidden');
+                    if (button) {
+                        const svg = button.querySelector('svg');
+                        if (svg) svg.style.transform = 'rotate(-90deg)';
+                    }
+                }
+            }
+        });
+
+        tabItems.forEach(item => {
+            item.onclick = () => showPage(`page-${item.dataset.page}`);
+        });
+        
+        fab.onclick = (e) => {
+            if (fab.classList.contains('dragging')) return;
+            let activePage = 'page-home';
+            if (document.getElementById('page-profile').style.display !== 'none' && !document.getElementById('page-profile').classList.contains('hidden')) {
+                activePage = 'page-profile';
+            }
+            showForm(null, activePage);
+        };
+        
+        alertCancel.onclick = hideModal;
+        alertConfirm.onclick = () => { if (modalConfirmCallback) modalConfirmCallback(); };
+        formBackBtn.onclick = () => showPage(previousPageForForm, true); 
+        formSaveBtn.onclick = handleSave;
+        avatarUploadInput.onchange = handleAvatarUpload;
+        profileNameInput.onchange = (e) => { userProfile.name = e.target.value; saveProfile(); };
+        profileNotesInput.onchange = (e) => { userProfile.notes = e.target.value; saveProfile(); };
+        attendanceBackBtn.onclick = () => showPage(previousPageForAttendance, true);
+        completeBtn.onclick = showResultsModal; 
+        resetBtn.onclick = handleResetGrid; 
+        resultsCloseBtn.onclick = hideResultsModal;
+        modalCopyBtn.onclick = handleCopyResults;
+        viewLogBtn.onclick = showAttendanceLogModal;
+        attendanceLogCloseBtn.onclick = hideAttendanceLogModal;
+        attendanceLogExportBtn.onclick = exportAttendanceLog;
+        toggleSortBtn.onclick = toggleSortMode; 
+        
+        aiReportBtn.onclick = showAiReportModal;
+        aiReportCloseBtn.onclick = hideAiReportModal;
+        aiCopyBtn.onclick = () => {
+            const textToCopy = aiReportContent.innerText;
+            const tempTextarea = document.createElement('textarea');
+            tempTextarea.value = textToCopy;
+            document.body.appendChild(tempTextarea);
+            tempTextarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempTextarea);
+            aiCopyBtn.innerHTML = `<svg class="w-5 h-5"><use xlink:href="#icon-check"></use></svg><span>Đã sao chép!</span>`;
+            setTimeout(() => {
+                aiCopyBtn.innerHTML = `<svg class="w-5 h-5"><use xlink:href="#icon-copy"></use></svg><span data-t="copyResults">Sao chép</span>`;
+            }, 2000);
+        };
+        
+        searchInput.oninput = renderLists;
+    });
+
+</script>
+
 </body>
 </html>
